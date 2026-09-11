@@ -6,11 +6,15 @@ import UIKit
 
 struct EPUBReaderView: View {
     @StateObject private var model: EPUBReaderModel
+    @StateObject private var bookmarks: ReaderBookmarkStore
     @ObservedObject var settings: ReaderSettings
+    @Binding var showsMenu: Bool
 
-    init(book: Book, settings: ReaderSettings) {
+    init(book: Book, settings: ReaderSettings, showsMenu: Binding<Bool>) {
         self.settings = settings
+        _showsMenu = showsMenu
         _model = StateObject(wrappedValue: EPUBReaderModel(book: book, settings: settings))
+        _bookmarks = StateObject(wrappedValue: ReaderBookmarkStore(bookID: book.id))
     }
 
     var body: some View {
@@ -33,9 +37,52 @@ struct EPUBReaderView: View {
                 ProgressView("Opening book…")
             }
         }
+        .overlay(alignment: .top) {
+            if showsMenu {
+                ReaderMenuBar(
+                    settings: settings,
+                    bookmarks: bookmarks,
+                    supportsPublisherStyles: true,
+                    chapters: model.chapters,
+                    isCurrentLocationBookmarked: isCurrentLocationBookmarked,
+                    selectChapter: { chapter in
+                        Task {
+                            await model.go(toChapter: chapter.id)
+                        }
+                        closeMenu()
+                    },
+                    selectBookmark: { bookmark in
+                        Task {
+                            await model.go(to: bookmark)
+                        }
+                        closeMenu()
+                    },
+                    toggleCurrentBookmark: toggleCurrentBookmark,
+                    dismiss: closeMenu
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(1)
+            }
+        }
         .preferredColorScheme(settings.theme == .dark ? .dark : .light)
         .task {
             await model.load()
+        }
+    }
+
+    private var isCurrentLocationBookmarked: Bool {
+        guard let json = model.currentLocationJSON else { return false }
+        return bookmarks.containsLocation(json)
+    }
+
+    private func toggleCurrentBookmark() {
+        guard let json = model.currentLocationJSON else { return }
+        bookmarks.toggleLocation(json: json, title: model.currentLocationTitle)
+    }
+
+    private func closeMenu() {
+        withAnimation(.snappy) {
+            showsMenu = false
         }
     }
 }
@@ -44,10 +91,14 @@ struct EPUBReaderView: View {
 final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
     @Published private(set) var navigator: EPUBNavigatorViewController?
     @Published private(set) var errorMessage: String?
+    @Published private(set) var chapters: [ReaderChapter] = []
+    @Published private(set) var currentLocationJSON: String?
+    @Published private(set) var currentLocationTitle = "Current location"
 
     private let book: Book
     private let settings: ReaderSettings
     private var isLoading = false
+    private var chapterLinks: [String: ReadiumShared.Link] = [:]
 
     init(book: Book, settings: ReaderSettings) {
         self.book = book
@@ -69,6 +120,8 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
             }
 
             let publication = try await ReadiumService.shared.openPublication(at: fileURL)
+            let tableOfContents = (try? await publication.tableOfContents().get()) ?? []
+            prepareChapters(from: tableOfContents)
             let initialLocation = EPUBProgressStore.load(for: book.id)
             let preferences = EPUBPreferences(
                 columnCount: .auto,
@@ -88,6 +141,7 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
             )
             navigator.delegate = self
             self.navigator = navigator
+            updateCurrentLocation(initialLocation ?? navigator.currentLocation)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -95,10 +149,66 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
 
     func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
         EPUBProgressStore.save(locator, for: book.id)
+        updateCurrentLocation(locator)
     }
 
     func navigator(_ navigator: Navigator, presentError error: NavigatorError) {
         errorMessage = "The reader encountered an error."
+    }
+
+    func go(toChapter chapterID: String) async {
+        guard let navigator, let link = chapterLinks[chapterID] else { return }
+        await navigator.go(to: link, options: .animated)
+    }
+
+    func go(to bookmark: ReaderBookmark) async {
+        guard let navigator,
+              let json = bookmark.locationJSON,
+              let locator = try? Locator(jsonString: json)
+        else {
+            return
+        }
+
+        await navigator.go(to: locator, options: .animated)
+    }
+
+    private func prepareChapters(from links: [ReadiumShared.Link]) {
+        var newChapters: [ReaderChapter] = []
+        var newChapterLinks: [String: ReadiumShared.Link] = [:]
+        var nextID = 0
+
+        func add(_ links: [ReadiumShared.Link], depth: Int) {
+            for link in links {
+                let id = String(nextID)
+                nextID += 1
+
+                if let title = link.title, !title.isEmpty {
+                    newChapters.append(ReaderChapter(id: id, title: title, depth: depth))
+                    newChapterLinks[id] = link
+                }
+
+                add(link.children, depth: depth + 1)
+            }
+        }
+
+        add(links, depth: 0)
+        chapters = newChapters
+        chapterLinks = newChapterLinks
+    }
+
+    private func updateCurrentLocation(_ locator: Locator?) {
+        guard let locator else { return }
+        currentLocationJSON = try? locator.jsonString()
+
+        if let title = locator.title, !title.isEmpty {
+            currentLocationTitle = title
+        } else if let position = locator.locations.position {
+            currentLocationTitle = "Position \(position)"
+        } else if let progression = locator.locations.totalProgression {
+            currentLocationTitle = "\(Int(progression * 100))%"
+        } else {
+            currentLocationTitle = "Saved location"
+        }
     }
 
 }

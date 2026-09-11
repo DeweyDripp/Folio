@@ -1,15 +1,14 @@
 import SwiftUI
 
-struct ReaderSettingsBar: View {
+struct ReaderAppearanceSettings: View {
     @ObservedObject var settings: ReaderSettings
     let supportsPublisherStyles: Bool
-    let dismiss: () -> Void
 
     var body: some View {
         VStack(spacing: 16) {
             HStack {
-                Text("Reading Settings")
-                    .font(.headline)
+                Text("Appearance")
+                    .font(.subheadline.weight(.semibold))
 
                 Spacer()
 
@@ -17,13 +16,6 @@ struct ReaderSettingsBar: View {
                     settings.reset()
                 }
                 .font(.subheadline)
-
-                Button(action: dismiss) {
-                    Image(systemName: "chevron.up")
-                        .font(.headline)
-                        .frame(width: 30, height: 30)
-                }
-                .accessibilityLabel("Close reading settings")
             }
 
             Picker("Theme", selection: $settings.theme) {
@@ -82,11 +74,5 @@ struct ReaderSettingsBar: View {
                     .font(.subheadline)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 18)
-        .background(.regularMaterial)
-        .clipShape(.rect(bottomLeadingRadius: 18, bottomTrailingRadius: 18))
-        .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
     }
 }

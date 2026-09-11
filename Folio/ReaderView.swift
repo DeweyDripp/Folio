@@ -3,14 +3,22 @@ import SwiftUI
 struct ReaderView: View {
     let book: Book
     @StateObject private var settings = ReaderSettings()
-    @State private var showsSettings = false
+    @State private var showsMenu = false
 
     var body: some View {
         Group {
             if book.bookFormat == .epub {
-                EPUBReaderView(book: book, settings: settings)
+                EPUBReaderView(
+                    book: book,
+                    settings: settings,
+                    showsMenu: $showsMenu
+                )
             } else {
-                PagedReaderView(book: book, settings: settings)
+                PagedReaderView(
+                    book: book,
+                    settings: settings,
+                    showsMenu: $showsMenu
+                )
             }
         }
         .navigationTitle(book.title)
@@ -19,7 +27,7 @@ struct ReaderView: View {
             ToolbarItem(placement: .principal) {
                 Button {
                     withAnimation(.snappy) {
-                        showsSettings.toggle()
+                        showsMenu.toggle()
                     }
                 } label: {
                     HStack(spacing: 5) {
@@ -27,26 +35,12 @@ struct ReaderView: View {
                             .font(.headline)
                             .lineLimit(1)
 
-                        Image(systemName: showsSettings ? "chevron.up" : "chevron.down")
+                        Image(systemName: showsMenu ? "chevron.up" : "chevron.down")
                             .font(.caption2.weight(.semibold))
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Reading settings for \(book.title)")
-            }
-        }
-        .overlay(alignment: .top) {
-            if showsSettings {
-                ReaderSettingsBar(
-                    settings: settings,
-                    supportsPublisherStyles: book.bookFormat == .epub
-                ) {
-                    withAnimation(.snappy) {
-                        showsSettings = false
-                    }
-                }
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .zIndex(1)
+                .accessibilityLabel("Reader menu for \(book.title)")
             }
         }
     }
@@ -55,8 +49,18 @@ struct ReaderView: View {
 private struct PagedReaderView: View {
     let book: Book
     @ObservedObject var settings: ReaderSettings
+    @Binding var showsMenu: Bool
+    @StateObject private var bookmarks: ReaderBookmarkStore
 
     @State private var currentPage = 0
+
+    init(book: Book, settings: ReaderSettings, showsMenu: Binding<Bool>) {
+        self.book = book
+        self.settings = settings
+        _showsMenu = showsMenu
+        _bookmarks = StateObject(wrappedValue: ReaderBookmarkStore(bookID: book.id))
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let showsTwoPages = settings.pageLayout.showsTwoPages(for: geometry.size.width)
@@ -78,8 +82,47 @@ private struct PagedReaderView: View {
                 }
             }
         }
+        .overlay(alignment: .top) {
+            if showsMenu {
+                ReaderMenuBar(
+                    settings: settings,
+                    bookmarks: bookmarks,
+                    supportsPublisherStyles: false,
+                    chapters: chapters,
+                    isCurrentLocationBookmarked: bookmarks.containsPage(currentPage),
+                    selectChapter: { chapter in
+                        guard let page = Int(chapter.id) else { return }
+                        currentPage = page
+                        closeMenu()
+                    },
+                    selectBookmark: { bookmark in
+                        guard let page = bookmark.pageIndex else { return }
+                        currentPage = page
+                        closeMenu()
+                    },
+                    toggleCurrentBookmark: {
+                        bookmarks.togglePage(currentPage)
+                    },
+                    dismiss: closeMenu
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(1)
+            }
+        }
         .background(settings.theme.backgroundColor)
         .preferredColorScheme(settings.theme == .dark ? .dark : .light)
+    }
+
+    private var chapters: [ReaderChapter] {
+        book.pages.indices.map { page in
+            ReaderChapter(id: String(page), title: "Page \(page + 1)", depth: 0)
+        }
+    }
+
+    private func closeMenu() {
+        withAnimation(.snappy) {
+            showsMenu = false
+        }
     }
 
     @ViewBuilder
