@@ -6,9 +6,11 @@ import UIKit
 
 struct EPUBReaderView: View {
     @StateObject private var model: EPUBReaderModel
+    @ObservedObject var settings: ReaderSettings
 
-    init(book: Book) {
-        _model = StateObject(wrappedValue: EPUBReaderModel(book: book))
+    init(book: Book, settings: ReaderSettings) {
+        self.settings = settings
+        _model = StateObject(wrappedValue: EPUBReaderModel(book: book, settings: settings))
     }
 
     var body: some View {
@@ -17,7 +19,8 @@ struct EPUBReaderView: View {
                 GeometryReader { geometry in
                     EPUBNavigatorContainer(
                         navigator: navigator,
-                        showsTwoPages: geometry.size.width >= 700
+                        settings: settings,
+                        availableWidth: geometry.size.width
                     )
                 }
             } else if let errorMessage = model.errorMessage {
@@ -30,6 +33,7 @@ struct EPUBReaderView: View {
                 ProgressView("Opening book…")
             }
         }
+        .preferredColorScheme(settings.theme == .dark ? .dark : .light)
         .task {
             await model.load()
         }
@@ -42,10 +46,12 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
     @Published private(set) var errorMessage: String?
 
     private let book: Book
+    private let settings: ReaderSettings
     private var isLoading = false
 
-    init(book: Book) {
+    init(book: Book, settings: ReaderSettings) {
         self.book = book
+        self.settings = settings
     }
 
     func load() async {
@@ -66,9 +72,13 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
             let initialLocation = EPUBProgressStore.load(for: book.id)
             let preferences = EPUBPreferences(
                 columnCount: .auto,
-                pageMargins: 1,
-                publisherStyles: true,
-                spread: .auto
+                fontFamily: settings.font.readiumFont,
+                fontSize: settings.fontScale,
+                lineHeight: settings.lineHeight,
+                pageMargins: settings.pageMargins,
+                publisherStyles: settings.usesPublisherStyles,
+                spread: .auto,
+                theme: settings.theme.readiumTheme
             )
 
             let navigator = try EPUBNavigatorViewController(
@@ -90,11 +100,13 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
     func navigator(_ navigator: Navigator, presentError error: NavigatorError) {
         errorMessage = "The reader encountered an error."
     }
+
 }
 
 private struct EPUBNavigatorContainer: UIViewControllerRepresentable {
     let navigator: EPUBNavigatorViewController
-    let showsTwoPages: Bool
+    @ObservedObject var settings: ReaderSettings
+    let availableWidth: CGFloat
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -105,19 +117,57 @@ private struct EPUBNavigatorContainer: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ viewController: EPUBHostViewController, context: Context) {
-        guard context.coordinator.showsTwoPages != showsTwoPages else { return }
-        context.coordinator.showsTwoPages = showsTwoPages
+        let showsTwoPages = settings.pageLayout.showsTwoPages(for: availableWidth)
+        let signature = [
+            String(showsTwoPages),
+            settings.theme.rawValue,
+            settings.font.rawValue,
+            String(settings.fontScale),
+            String(settings.lineHeight),
+            String(settings.pageMargins),
+            String(settings.usesPublisherStyles)
+        ].joined(separator: "|")
+
+        guard context.coordinator.settingsSignature != signature else { return }
+        context.coordinator.settingsSignature = signature
 
         navigator.submitPreferences(
             EPUBPreferences(
                 columnCount: showsTwoPages ? .two : .one,
-                spread: showsTwoPages ? .always : .never
+                fontFamily: settings.font.readiumFont,
+                fontSize: settings.fontScale,
+                lineHeight: settings.lineHeight,
+                pageMargins: settings.pageMargins,
+                publisherStyles: settings.usesPublisherStyles,
+                spread: showsTwoPages ? .always : .never,
+                theme: settings.theme.readiumTheme
             )
         )
     }
 
     final class Coordinator {
-        var showsTwoPages: Bool?
+        var settingsSignature: String?
+    }
+}
+
+private extension ReaderTheme {
+    var readiumTheme: ReadiumNavigator.Theme {
+        switch self {
+        case .light: .light
+        case .sepia: .sepia
+        case .dark: .dark
+        }
+    }
+}
+
+private extension ReaderFont {
+    var readiumFont: ReadiumNavigator.FontFamily {
+        switch self {
+        case .serif: .serif
+        case .sansSerif: .sansSerif
+        case .athelas: .athelas
+        case .openDyslexic: .openDyslexic
+        }
     }
 }
 

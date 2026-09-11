@@ -2,28 +2,64 @@ import SwiftUI
 
 struct ReaderView: View {
     let book: Book
+    @StateObject private var settings = ReaderSettings()
+    @State private var showsSettings = false
 
     var body: some View {
         Group {
             if book.bookFormat == .epub {
-                EPUBReaderView(book: book)
+                EPUBReaderView(book: book, settings: settings)
             } else {
-                PagedReaderView(book: book)
+                PagedReaderView(book: book, settings: settings)
             }
         }
         .navigationTitle(book.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Button {
+                    withAnimation(.snappy) {
+                        showsSettings.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(book.title)
+                            .font(.headline)
+                            .lineLimit(1)
+
+                        Image(systemName: showsSettings ? "chevron.up" : "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Reading settings for \(book.title)")
+            }
+        }
+        .overlay(alignment: .top) {
+            if showsSettings {
+                ReaderSettingsBar(
+                    settings: settings,
+                    supportsPublisherStyles: book.bookFormat == .epub
+                ) {
+                    withAnimation(.snappy) {
+                        showsSettings = false
+                    }
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(1)
+            }
+        }
     }
 }
 
 private struct PagedReaderView: View {
     let book: Book
+    @ObservedObject var settings: ReaderSettings
 
     @State private var currentPage = 0
-
     var body: some View {
         GeometryReader { geometry in
-            let showsTwoPages = geometry.size.width >= 700
+            let showsTwoPages = settings.pageLayout.showsTwoPages(for: geometry.size.width)
             let pageStep = showsTwoPages ? 2 : 1
 
             VStack(spacing: 0) {
@@ -42,24 +78,25 @@ private struct PagedReaderView: View {
                 }
             }
         }
-        .background(Color(.secondarySystemBackground))
+        .background(settings.theme.backgroundColor)
+        .preferredColorScheme(settings.theme == .dark ? .dark : .light)
     }
 
     @ViewBuilder
     private func readerPages(showsTwoPages: Bool) -> some View {
         if showsTwoPages {
             HStack(spacing: 1) {
-                PageView(text: book.pages[currentPage])
+                    PageView(text: book.pages[currentPage], settings: settings)
 
                 if currentPage + 1 < book.pages.count {
-                    PageView(text: book.pages[currentPage + 1])
+                    PageView(text: book.pages[currentPage + 1], settings: settings)
                 } else {
                     Color(.systemBackground)
                 }
             }
             .background(Color(.separator))
         } else {
-            PageView(text: book.pages[currentPage])
+            PageView(text: book.pages[currentPage], settings: settings)
         }
     }
 
@@ -102,18 +139,20 @@ private struct PagedReaderView: View {
 
 private struct PageView: View {
     let text: String
+    @ObservedObject var settings: ReaderSettings
 
     var body: some View {
         ScrollView {
             Text(text)
-                .font(.system(.title3, design: .serif))
-                .lineSpacing(8)
+                .font(settings.font.swiftUIFont(size: 20 * CGFloat(settings.fontScale)))
+                .foregroundStyle(settings.theme.textColor)
+                .lineSpacing(8 * CGFloat(settings.lineHeight))
                 .frame(maxWidth: 620, alignment: .topLeading)
-                .padding(.horizontal, 32)
+                .padding(.horizontal, 32 * CGFloat(settings.pageMargins))
                 .padding(.vertical, 40)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
+        .background(settings.theme.backgroundColor)
     }
 }
 
