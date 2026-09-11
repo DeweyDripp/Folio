@@ -51,6 +51,7 @@ private struct PagedReaderView: View {
     @ObservedObject var settings: ReaderSettings
     @Binding var showsMenu: Bool
     @StateObject private var bookmarks: ReaderBookmarkStore
+    @StateObject private var highlights: ReaderHighlightStore
 
     @State private var currentPage = 0
 
@@ -59,6 +60,7 @@ private struct PagedReaderView: View {
         self.settings = settings
         _showsMenu = showsMenu
         _bookmarks = StateObject(wrappedValue: ReaderBookmarkStore(bookID: book.id))
+        _highlights = StateObject(wrappedValue: ReaderHighlightStore(bookID: book.id))
     }
 
     var body: some View {
@@ -87,7 +89,9 @@ private struct PagedReaderView: View {
                 ReaderMenuBar(
                     settings: settings,
                     bookmarks: bookmarks,
+                    highlights: highlights,
                     supportsPublisherStyles: false,
+                    supportsHighlights: false,
                     chapters: chapters,
                     isCurrentLocationBookmarked: bookmarks.containsPage(currentPage),
                     selectChapter: { chapter in
@@ -103,10 +107,20 @@ private struct PagedReaderView: View {
                     toggleCurrentBookmark: {
                         bookmarks.togglePage(currentPage)
                     },
+                    selectHighlight: { _ in },
+                    editHighlight: { _ in },
                     dismiss: closeMenu
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .zIndex(1)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if !showsMenu {
+                BookmarkRibbon(
+                    isBookmarked: bookmarks.containsPage(currentPage),
+                    toggle: { bookmarks.togglePage(currentPage) }
+                )
             }
         }
         .background(settings.theme.backgroundColor)
@@ -187,7 +201,7 @@ private struct PageView: View {
     var body: some View {
         ScrollView {
             Text(text)
-                .font(settings.font.swiftUIFont(size: 20 * CGFloat(settings.fontScale)))
+                .font(settings.swiftUIFont(size: 20 * CGFloat(settings.fontScale)))
                 .foregroundStyle(settings.theme.textColor)
                 .lineSpacing(8 * CGFloat(settings.lineHeight))
                 .frame(maxWidth: 620, alignment: .topLeading)

@@ -54,6 +54,14 @@ struct LibraryView: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Library")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        AppSettingsView()
+                    } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                }
+
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         isShowingImporter = true
@@ -92,7 +100,7 @@ struct LibraryView: View {
                 if isImporting {
                     ProgressView("Importing book…")
                         .padding(22)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                        .folioControlPanel(cornerRadius: 16)
                 }
             }
             .alert("Couldn’t Import Book", isPresented: isShowingImportError) {
@@ -131,6 +139,7 @@ struct LibraryView: View {
         ImportedBookStore.save(importedBooks)
         ImportedBookStore.removeImportedFile(for: book)
         ReaderBookmarkStore.removeAll(for: book.id)
+        ReaderHighlightStore.removeAll(for: book.id)
         EPUBProgressStore.remove(for: book.id)
         bookToDelete = nil
     }

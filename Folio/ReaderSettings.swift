@@ -82,6 +82,7 @@ enum ReaderPageLayout: String, CaseIterable, Identifiable {
 final class ReaderSettings: ObservableObject {
     @Published var theme: ReaderTheme { didSet { save() } }
     @Published var font: ReaderFont { didSet { save() } }
+    @Published var customFontName: String? { didSet { save() } }
     @Published var fontScale: Double { didSet { save() } }
     @Published var lineHeight: Double { didSet { save() } }
     @Published var pageMargins: Double { didSet { save() } }
@@ -93,6 +94,7 @@ final class ReaderSettings: ObservableObject {
     init() {
         theme = ReaderTheme(rawValue: defaults.string(forKey: Key.theme) ?? "") ?? .light
         font = ReaderFont(rawValue: defaults.string(forKey: Key.font) ?? "") ?? .serif
+        customFontName = defaults.string(forKey: Key.customFontName)
         fontScale = defaults.object(forKey: Key.fontScale) as? Double ?? 1
         lineHeight = defaults.object(forKey: Key.lineHeight) as? Double ?? 1.4
         pageMargins = defaults.object(forKey: Key.pageMargins) as? Double ?? 1
@@ -103,6 +105,7 @@ final class ReaderSettings: ObservableObject {
     func reset() {
         theme = .light
         font = .serif
+        customFontName = nil
         fontScale = 1
         lineHeight = 1.4
         pageMargins = 1
@@ -113,6 +116,7 @@ final class ReaderSettings: ObservableObject {
     private func save() {
         defaults.set(theme.rawValue, forKey: Key.theme)
         defaults.set(font.rawValue, forKey: Key.font)
+        defaults.set(customFontName, forKey: Key.customFontName)
         defaults.set(fontScale, forKey: Key.fontScale)
         defaults.set(lineHeight, forKey: Key.lineHeight)
         defaults.set(pageMargins, forKey: Key.pageMargins)
@@ -123,10 +127,30 @@ final class ReaderSettings: ObservableObject {
     private enum Key {
         static let theme = "reader-theme"
         static let font = "reader-font"
+        static let customFontName = "reader-custom-font-name"
         static let fontScale = "reader-font-scale"
         static let lineHeight = "reader-line-height"
         static let pageMargins = "reader-page-margins"
         static let pageLayout = "reader-page-layout"
         static let publisherStyles = "reader-publisher-styles"
+    }
+
+    var fontIdentifier: String {
+        get { customFontName ?? font.rawValue }
+        set {
+            if let builtInFont = ReaderFont(rawValue: newValue) {
+                customFontName = nil
+                font = builtInFont
+            } else {
+                customFontName = newValue
+            }
+        }
+    }
+
+    func swiftUIFont(size: CGFloat) -> Font {
+        if let customFontName {
+            return .custom(customFontName, size: size)
+        }
+        return font.swiftUIFont(size: size)
     }
 }

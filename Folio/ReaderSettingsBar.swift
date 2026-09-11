@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ReaderAppearanceSettings: View {
     @ObservedObject var settings: ReaderSettings
+    @ObservedObject private var customFonts = CustomFontStore.shared
     let supportsPublisherStyles: Bool
 
     var body: some View {
@@ -44,9 +45,16 @@ struct ReaderAppearanceSettings: View {
             }
 
             HStack {
-                Picker("Font", selection: $settings.font) {
+                Picker("Font", selection: fontSelection) {
                     ForEach(ReaderFont.allCases) { font in
-                        Text(font.title).tag(font)
+                        Text(font.title).tag(font.rawValue)
+                    }
+
+                    if !customFonts.fonts.isEmpty {
+                        Divider()
+                        ForEach(customFonts.fonts) { font in
+                            Text(font.displayName).tag(font.id)
+                        }
                     }
                 }
 
@@ -74,5 +82,12 @@ struct ReaderAppearanceSettings: View {
                     .font(.subheadline)
             }
         }
+    }
+
+    private var fontSelection: Binding<String> {
+        Binding(
+            get: { settings.fontIdentifier },
+            set: { settings.fontIdentifier = $0 }
+        )
     }
 }

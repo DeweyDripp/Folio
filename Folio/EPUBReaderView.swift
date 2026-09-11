@@ -7,14 +7,17 @@ import UIKit
 struct EPUBReaderView: View {
     @StateObject private var model: EPUBReaderModel
     @StateObject private var bookmarks: ReaderBookmarkStore
+    @StateObject private var highlights: ReaderHighlightStore
     @ObservedObject var settings: ReaderSettings
     @Binding var showsMenu: Bool
+    @State private var editingHighlight: ReaderHighlight?
 
     init(book: Book, settings: ReaderSettings, showsMenu: Binding<Bool>) {
         self.settings = settings
         _showsMenu = showsMenu
         _model = StateObject(wrappedValue: EPUBReaderModel(book: book, settings: settings))
         _bookmarks = StateObject(wrappedValue: ReaderBookmarkStore(bookID: book.id))
+        _highlights = StateObject(wrappedValue: ReaderHighlightStore(bookID: book.id))
     }
 
     var body: some View {
@@ -24,7 +27,8 @@ struct EPUBReaderView: View {
                     EPUBNavigatorContainer(
                         navigator: navigator,
                         settings: settings,
-                        availableWidth: geometry.size.width
+                        availableWidth: geometry.size.width,
+                        onHighlightSelection: addHighlight
                     )
                 }
             } else if let errorMessage = model.errorMessage {
@@ -42,7 +46,9 @@ struct EPUBReaderView: View {
                 ReaderMenuBar(
                     settings: settings,
                     bookmarks: bookmarks,
+                    highlights: highlights,
                     supportsPublisherStyles: true,
+                    supportsHighlights: true,
                     chapters: model.chapters,
                     isCurrentLocationBookmarked: isCurrentLocationBookmarked,
                     selectChapter: { chapter in
@@ -58,15 +64,44 @@ struct EPUBReaderView: View {
                         closeMenu()
                     },
                     toggleCurrentBookmark: toggleCurrentBookmark,
+                    selectHighlight: { highlight in
+                        Task {
+                            await model.go(to: highlight)
+                        }
+                        closeMenu()
+                    },
+                    editHighlight: { highlight in
+                        editingHighlight = highlight
+                    },
                     dismiss: closeMenu
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .zIndex(1)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if !showsMenu, model.currentLocationJSON != nil {
+                BookmarkRibbon(
+                    isBookmarked: isCurrentLocationBookmarked,
+                    toggle: toggleCurrentBookmark
+                )
+            }
+        }
         .preferredColorScheme(settings.theme == .dark ? .dark : .light)
+        .sheet(item: $editingHighlight) { highlight in
+            HighlightNoteEditor(highlight: highlight) { note, color in
+                highlights.update(highlight, note: note, color: color)
+            }
+        }
+        .onReceive(highlights.$highlights) { savedHighlights in
+            model.applyHighlights(savedHighlights)
+        }
         .task {
+            model.onHighlightActivated = { highlightID in
+                editingHighlight = highlights.highlights.first { $0.id.uuidString == highlightID }
+            }
             await model.load()
+            model.applyHighlights(highlights.highlights)
         }
     }
 
@@ -78,6 +113,17 @@ struct EPUBReaderView: View {
     private func toggleCurrentBookmark() {
         guard let json = model.currentLocationJSON else { return }
         bookmarks.toggleLocation(json: json, title: model.currentLocationTitle)
+    }
+
+    private func addHighlight(_ locator: Locator) {
+        guard let json = try? locator.jsonString() else { return }
+        let selectedText = locator.text.highlight?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayText = selectedText.flatMap { $0.isEmpty ? nil : $0 } ?? "Highlighted text"
+        highlights.add(
+            locatorJSON: json,
+            text: displayText,
+            progression: locator.locations.totalProgression
+        )
     }
 
     private func closeMenu() {
@@ -99,6 +145,8 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
     private let settings: ReaderSettings
     private var isLoading = false
     private var chapterLinks: [String: ReadiumShared.Link] = [:]
+    private let highlightDecorationGroup = "highlights"
+    var onHighlightActivated: ((String) -> Void)?
 
     init(book: Book, settings: ReaderSettings) {
         self.book = book
@@ -125,7 +173,7 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
             let initialLocation = EPUBProgressStore.load(for: book.id)
             let preferences = EPUBPreferences(
                 columnCount: .auto,
-                fontFamily: settings.font.readiumFont,
+                fontFamily: settings.readiumFont,
                 fontSize: settings.fontScale,
                 lineHeight: settings.lineHeight,
                 pageMargins: settings.pageMargins,
@@ -137,9 +185,21 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
             let navigator = try EPUBNavigatorViewController(
                 publication: publication,
                 initialLocation: initialLocation,
-                config: EPUBNavigatorViewController.Configuration(preferences: preferences)
+                config: EPUBNavigatorViewController.Configuration(
+                    preferences: preferences,
+                    editingActions: EditingAction.defaultActions + [
+                        EditingAction(
+                            title: "Highlight",
+                            action: #selector(EPUBHostViewController.highlightSelection)
+                        )
+                    ],
+                    fontFamilyDeclarations: CustomFontStore.shared.readiumDeclarations
+                )
             )
             navigator.delegate = self
+            navigator.observeDecorationInteractions(inGroup: highlightDecorationGroup) { [weak self] event in
+                self?.onHighlightActivated?(event.decoration.id)
+            }
             self.navigator = navigator
             updateCurrentLocation(initialLocation ?? navigator.currentLocation)
         } catch {
@@ -158,7 +218,7 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
 
     func go(toChapter chapterID: String) async {
         guard let navigator, let link = chapterLinks[chapterID] else { return }
-        await navigator.go(to: link, options: .animated)
+        _ = await navigator.go(to: link, options: .animated)
     }
 
     func go(to bookmark: ReaderBookmark) async {
@@ -169,7 +229,30 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
             return
         }
 
-        await navigator.go(to: locator, options: .animated)
+        _ = await navigator.go(to: locator, options: .animated)
+    }
+
+    func go(to highlight: ReaderHighlight) async {
+        guard let navigator,
+              let locator = try? Locator(jsonString: highlight.locatorJSON)
+        else {
+            return
+        }
+        _ = await navigator.go(to: locator, options: .animated)
+    }
+
+    func applyHighlights(_ highlights: [ReaderHighlight]) {
+        guard let navigator else { return }
+
+        let decorations = highlights.compactMap { highlight -> Decoration? in
+            guard let locator = try? Locator(jsonString: highlight.locatorJSON) else { return nil }
+            return Decoration(
+                id: highlight.id.uuidString,
+                locator: locator,
+                style: .highlight(tint: highlight.color.uiColor)
+            )
+        }
+        navigator.apply(decorations: decorations, in: highlightDecorationGroup)
     }
 
     private func prepareChapters(from links: [ReadiumShared.Link]) {
@@ -217,21 +300,26 @@ private struct EPUBNavigatorContainer: UIViewControllerRepresentable {
     let navigator: EPUBNavigatorViewController
     @ObservedObject var settings: ReaderSettings
     let availableWidth: CGFloat
+    let onHighlightSelection: (Locator) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
 
     func makeUIViewController(context: Context) -> EPUBHostViewController {
-        EPUBHostViewController(navigator: navigator)
+        EPUBHostViewController(
+            navigator: navigator,
+            onHighlightSelection: onHighlightSelection
+        )
     }
 
     func updateUIViewController(_ viewController: EPUBHostViewController, context: Context) {
+        viewController.onHighlightSelection = onHighlightSelection
         let showsTwoPages = settings.pageLayout.showsTwoPages(for: availableWidth)
         let signature = [
             String(showsTwoPages),
             settings.theme.rawValue,
-            settings.font.rawValue,
+            settings.fontIdentifier,
             String(settings.fontScale),
             String(settings.lineHeight),
             String(settings.pageMargins),
@@ -244,7 +332,7 @@ private struct EPUBNavigatorContainer: UIViewControllerRepresentable {
         navigator.submitPreferences(
             EPUBPreferences(
                 columnCount: showsTwoPages ? .two : .one,
-                fontFamily: settings.font.readiumFont,
+                fontFamily: settings.readiumFont,
                 fontSize: settings.fontScale,
                 lineHeight: settings.lineHeight,
                 pageMargins: settings.pageMargins,
@@ -270,22 +358,31 @@ private extension ReaderTheme {
     }
 }
 
-private extension ReaderFont {
+private extension ReaderSettings {
     var readiumFont: ReadiumNavigator.FontFamily {
-        switch self {
-        case .serif: .serif
-        case .sansSerif: .sansSerif
-        case .athelas: .athelas
-        case .openDyslexic: .openDyslexic
+        if let customFontName {
+            return ReadiumNavigator.FontFamily(rawValue: customFontName)
+        }
+
+        return switch font {
+        case .serif: ReadiumNavigator.FontFamily.serif
+        case .sansSerif: ReadiumNavigator.FontFamily.sansSerif
+        case .athelas: ReadiumNavigator.FontFamily.athelas
+        case .openDyslexic: ReadiumNavigator.FontFamily.openDyslexic
         }
     }
 }
 
 private final class EPUBHostViewController: UIViewController {
     private let navigator: EPUBNavigatorViewController
+    var onHighlightSelection: (Locator) -> Void
 
-    init(navigator: EPUBNavigatorViewController) {
+    init(
+        navigator: EPUBNavigatorViewController,
+        onHighlightSelection: @escaping (Locator) -> Void
+    ) {
         self.navigator = navigator
+        self.onHighlightSelection = onHighlightSelection
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -302,6 +399,23 @@ private final class EPUBHostViewController: UIViewController {
         navigator.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(navigator.view)
         navigator.didMove(toParent: self)
+    }
+
+    @objc func highlightSelection() {
+        guard let selection = navigator.currentSelection else { return }
+        onHighlightSelection(selection.locator)
+        navigator.clearSelection()
+    }
+}
+
+private extension ReaderHighlightColor {
+    var uiColor: UIColor {
+        switch self {
+        case .yellow: UIColor(red: 1, green: 0.82, blue: 0.2, alpha: 1)
+        case .pink: UIColor(red: 1, green: 0.48, blue: 0.62, alpha: 1)
+        case .green: UIColor(red: 0.42, green: 0.82, blue: 0.48, alpha: 1)
+        case .blue: UIColor(red: 0.35, green: 0.66, blue: 1, alpha: 1)
+        }
     }
 }
 

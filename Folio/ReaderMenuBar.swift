@@ -3,17 +3,22 @@ import SwiftUI
 enum ReaderMenuSection {
     case appearance
     case navigation
+    case highlights
 }
 
 struct ReaderMenuBar: View {
     @ObservedObject var settings: ReaderSettings
     @ObservedObject var bookmarks: ReaderBookmarkStore
+    @ObservedObject var highlights: ReaderHighlightStore
     let supportsPublisherStyles: Bool
+    let supportsHighlights: Bool
     let chapters: [ReaderChapter]
     let isCurrentLocationBookmarked: Bool
     let selectChapter: (ReaderChapter) -> Void
     let selectBookmark: (ReaderBookmark) -> Void
     let toggleCurrentBookmark: () -> Void
+    let selectHighlight: (ReaderHighlight) -> Void
+    let editHighlight: (ReaderHighlight) -> Void
     let dismiss: () -> Void
 
     @State private var section: ReaderMenuSection = .appearance
@@ -37,6 +42,10 @@ struct ReaderMenuBar: View {
             HStack(spacing: 12) {
                 sectionButton(title: "Appearance", systemImage: "textformat", section: .appearance)
                 sectionButton(title: "Navigation", systemImage: "list.bullet", section: .navigation)
+
+                if supportsHighlights {
+                    sectionButton(title: "Highlights", systemImage: "highlighter", section: .highlights)
+                }
             }
 
             Divider()
@@ -50,14 +59,15 @@ struct ReaderMenuBar: View {
 
             case .navigation:
                 navigationPanel
+
+            case .highlights:
+                highlightsPanel
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 18)
-        .background(.regularMaterial)
-        .clipShape(.rect(bottomLeadingRadius: 18, bottomTrailingRadius: 18))
-        .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
+        .folioControlPanel()
     }
 
     private func sectionButton(
@@ -159,6 +169,73 @@ struct ReaderMenuBar: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .frame(maxHeight: 360)
+    }
+
+    private var highlightsPanel: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 8) {
+                Label("Highlights & Notes", systemImage: "highlighter")
+                    .font(.subheadline.weight(.semibold))
+
+                if highlights.highlights.isEmpty {
+                    ContentUnavailableView(
+                        "No Highlights Yet",
+                        systemImage: "text.badge.plus",
+                        description: Text("Select text in the book, then choose Highlight.")
+                    )
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                } else {
+                    ForEach(highlights.highlights) { highlight in
+                        HStack(alignment: .top, spacing: 10) {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(highlight.color.swiftUIColor)
+                                .frame(width: 5)
+
+                            Button {
+                                selectHighlight(highlight)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(highlight.text)
+                                        .font(.subheadline)
+                                        .lineLimit(3)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                                    if !highlight.note.isEmpty {
+                                        Label(highlight.note, systemImage: "note.text")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+
+                            Menu {
+                                Button {
+                                    editHighlight(highlight)
+                                } label: {
+                                    Label("Edit Note", systemImage: "square.and.pencil")
+                                }
+
+                                Button(role: .destructive) {
+                                    highlights.remove(highlight)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .frame(width: 30, height: 30)
+                            }
+                            .accessibilityLabel("Actions for highlight")
+                        }
+                        .padding(.vertical, 5)
                     }
                 }
             }
