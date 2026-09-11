@@ -87,6 +87,7 @@ final class ReaderSettings: ObservableObject {
     @Published var lineHeight: Double { didSet { save() } }
     @Published var pageMargins: Double { didSet { save() } }
     @Published var pageLayout: ReaderPageLayout { didSet { save() } }
+    @Published var usesPageTurnAnimation: Bool { didSet { save() } }
     @Published var usesPublisherStyles: Bool { didSet { save() } }
 
     private let defaults = UserDefaults.standard
@@ -99,6 +100,7 @@ final class ReaderSettings: ObservableObject {
         lineHeight = defaults.object(forKey: Key.lineHeight) as? Double ?? 1.4
         pageMargins = defaults.object(forKey: Key.pageMargins) as? Double ?? 1
         pageLayout = ReaderPageLayout(rawValue: defaults.string(forKey: Key.pageLayout) ?? "") ?? .automatic
+        usesPageTurnAnimation = defaults.object(forKey: Key.pageTurnAnimation) as? Bool ?? true
         usesPublisherStyles = defaults.object(forKey: Key.publisherStyles) as? Bool ?? true
     }
 
@@ -110,6 +112,7 @@ final class ReaderSettings: ObservableObject {
         lineHeight = 1.4
         pageMargins = 1
         pageLayout = .automatic
+        usesPageTurnAnimation = true
         usesPublisherStyles = true
     }
 
@@ -121,6 +124,7 @@ final class ReaderSettings: ObservableObject {
         defaults.set(lineHeight, forKey: Key.lineHeight)
         defaults.set(pageMargins, forKey: Key.pageMargins)
         defaults.set(pageLayout.rawValue, forKey: Key.pageLayout)
+        defaults.set(usesPageTurnAnimation, forKey: Key.pageTurnAnimation)
         defaults.set(usesPublisherStyles, forKey: Key.publisherStyles)
     }
 
@@ -132,6 +136,7 @@ final class ReaderSettings: ObservableObject {
         static let lineHeight = "reader-line-height"
         static let pageMargins = "reader-page-margins"
         static let pageLayout = "reader-page-layout"
+        static let pageTurnAnimation = "reader-page-turn-animation"
         static let publisherStyles = "reader-publisher-styles"
     }
 

@@ -77,6 +77,9 @@ struct ReaderAppearanceSettings: View {
             }
             .font(.caption)
 
+            Toggle("Page turn animation", isOn: $settings.usesPageTurnAnimation)
+                .font(.subheadline)
+
             if supportsPublisherStyles {
                 Toggle("Use publisher formatting", isOn: $settings.usesPublisherStyles)
                     .font(.subheadline)

@@ -54,6 +54,8 @@ private struct PagedReaderView: View {
     @StateObject private var highlights: ReaderHighlightStore
 
     @State private var currentPage = 0
+    @State private var activePageStep = 1
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(book: Book, settings: ReaderSettings, showsMenu: Binding<Bool>) {
         self.book = book
@@ -69,7 +71,7 @@ private struct PagedReaderView: View {
             let pageStep = showsTwoPages ? 2 : 1
 
             VStack(spacing: 0) {
-                readerPages(showsTwoPages: showsTwoPages)
+                pageContainer(showsTwoPages: showsTwoPages, pageStep: pageStep)
 
                 Divider()
 
@@ -78,7 +80,11 @@ private struct PagedReaderView: View {
                     .padding(.vertical, 14)
                     .background(.bar)
             }
+            .onAppear {
+                activePageStep = pageStep
+            }
             .onChange(of: showsTwoPages) { _, isWide in
+                activePageStep = isWide ? 2 : 1
                 if isWide {
                     currentPage -= currentPage % 2
                 }
@@ -96,12 +102,12 @@ private struct PagedReaderView: View {
                     isCurrentLocationBookmarked: bookmarks.containsPage(currentPage),
                     selectChapter: { chapter in
                         guard let page = Int(chapter.id) else { return }
-                        currentPage = page
+                        go(to: page)
                         closeMenu()
                     },
                     selectBookmark: { bookmark in
                         guard let page = bookmark.pageIndex else { return }
-                        currentPage = page
+                        go(to: page)
                         closeMenu()
                     },
                     toggleCurrentBookmark: {
@@ -140,27 +146,41 @@ private struct PagedReaderView: View {
     }
 
     @ViewBuilder
-    private func readerPages(showsTwoPages: Bool) -> some View {
+    private func pageContainer(showsTwoPages: Bool, pageStep: Int) -> some View {
+        PaperPageContainer(
+            page: $currentPage,
+            pageCount: book.pages.count,
+            step: pageStep,
+            animated: settings.usesPageTurnAnimation && !reduceMotion,
+            paperColor: settings.theme.backgroundColor
+        ) { page in
+            readerPages(startingAt: page, showsTwoPages: showsTwoPages)
+        }
+    }
+
+    @ViewBuilder
+    private func readerPages(startingAt page: Int, showsTwoPages: Bool) -> some View {
         if showsTwoPages {
             HStack(spacing: 1) {
-                    PageView(text: book.pages[currentPage], settings: settings)
+                PageView(text: book.pages[page], settings: settings)
 
-                if currentPage + 1 < book.pages.count {
-                    PageView(text: book.pages[currentPage + 1], settings: settings)
+                if page + 1 < book.pages.count {
+                    PageView(text: book.pages[page + 1], settings: settings)
                 } else {
                     Color(.systemBackground)
                 }
             }
             .background(Color(.separator))
         } else {
-            PageView(text: book.pages[currentPage], settings: settings)
+            PageView(text: book.pages[page], settings: settings)
         }
     }
+
 
     private func readerControls(pageStep: Int) -> some View {
         HStack {
             Button {
-                currentPage = max(0, currentPage - pageStep)
+                go(to: max(0, currentPage - pageStep))
             } label: {
                 Label("Previous", systemImage: "chevron.left")
             }
@@ -175,7 +195,7 @@ private struct PagedReaderView: View {
             Spacer()
 
             Button {
-                currentPage = min(book.pages.count - 1, currentPage + pageStep)
+                go(to: min(book.pages.count - 1, currentPage + pageStep))
             } label: {
                 Label("Next", systemImage: "chevron.right")
                     .labelStyle(.titleAndIcon)
@@ -191,6 +211,14 @@ private struct PagedReaderView: View {
         }
 
         return "Page \(currentPage + 1) of \(book.pages.count)"
+    }
+
+
+    private func go(to page: Int) {
+        guard page != currentPage, book.pages.indices.contains(page) else { return }
+        let alignedPage = page - (page % activePageStep)
+
+        currentPage = alignedPage
     }
 }
 

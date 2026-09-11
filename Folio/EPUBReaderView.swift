@@ -218,7 +218,7 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
 
     func go(toChapter chapterID: String) async {
         guard let navigator, let link = chapterLinks[chapterID] else { return }
-        _ = await navigator.go(to: link, options: .animated)
+        _ = await navigator.go(to: link, options: pageTurnOptions)
     }
 
     func go(to bookmark: ReaderBookmark) async {
@@ -229,7 +229,7 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
             return
         }
 
-        _ = await navigator.go(to: locator, options: .animated)
+        _ = await navigator.go(to: locator, options: pageTurnOptions)
     }
 
     func go(to highlight: ReaderHighlight) async {
@@ -238,7 +238,7 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
         else {
             return
         }
-        _ = await navigator.go(to: locator, options: .animated)
+        _ = await navigator.go(to: locator, options: pageTurnOptions)
     }
 
     func applyHighlights(_ highlights: [ReaderHighlight]) {
@@ -253,6 +253,10 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
             )
         }
         navigator.apply(decorations: decorations, in: highlightDecorationGroup)
+    }
+
+    private var pageTurnOptions: NavigatorGoOptions {
+        NavigatorGoOptions(animated: settings.usesPageTurnAnimation)
     }
 
     private func prepareChapters(from links: [ReadiumShared.Link]) {
@@ -309,12 +313,15 @@ private struct EPUBNavigatorContainer: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> EPUBHostViewController {
         EPUBHostViewController(
             navigator: navigator,
-            onHighlightSelection: onHighlightSelection
+            onHighlightSelection: onHighlightSelection,
+            usesPageTurnAnimation: settings.usesPageTurnAnimation
         )
     }
 
     func updateUIViewController(_ viewController: EPUBHostViewController, context: Context) {
         viewController.onHighlightSelection = onHighlightSelection
+        viewController.usesPageTurnAnimation = settings.usesPageTurnAnimation
+        viewController.paperColor = UIColor(settings.theme.backgroundColor)
         let showsTwoPages = settings.pageLayout.showsTwoPages(for: availableWidth)
         let signature = [
             String(showsTwoPages),
@@ -373,17 +380,19 @@ private extension ReaderSettings {
     }
 }
 
-private final class EPUBHostViewController: UIViewController {
+private final class EPUBHostViewController: PaperTurnController {
     private let navigator: EPUBNavigatorViewController
     var onHighlightSelection: (Locator) -> Void
 
     init(
         navigator: EPUBNavigatorViewController,
-        onHighlightSelection: @escaping (Locator) -> Void
+        onHighlightSelection: @escaping (Locator) -> Void,
+        usesPageTurnAnimation: Bool
     ) {
         self.navigator = navigator
         self.onHighlightSelection = onHighlightSelection
         super.init(nibName: nil, bundle: nil)
+        self.usesPageTurnAnimation = usesPageTurnAnimation
     }
 
     @available(*, unavailable)
@@ -399,6 +408,32 @@ private final class EPUBHostViewController: UIViewController {
         navigator.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(navigator.view)
         navigator.didMove(toParent: self)
+
+        view.accessibilityIdentifier = "epub.reader"
+
+        canTurnPage = { [weak navigator] in navigator?.currentSelection == nil }
+        prepareTurn = { [weak navigator] left in
+            guard let navigator, let original = navigator.currentLocation else { return nil }
+            let forward = left == (navigator.publication.metadata.readingProgression != .rtl)
+            let moved = forward
+                ? await navigator.goForward(options: NavigatorGoOptions(animated: false))
+                : await navigator.goBackward(options: NavigatorGoOptions(animated: false))
+            guard moved else { return nil }
+            return { _ = await navigator.go(to: original, options: NavigatorGoOptions(animated: false)) }
+        }
+        navigator.addObserver(.tap { [weak self] event in
+            guard let self, self.navigator.currentSelection == nil else { return false }
+            let width = self.view.bounds.width
+            if event.location.x < width * 0.2 {
+                self.turnByTap(left: false)
+                return true
+            }
+            if event.location.x > width * 0.8 {
+                self.turnByTap(left: true)
+                return true
+            }
+            return false
+        })
     }
 
     @objc func highlightSelection() {
