@@ -313,7 +313,7 @@ private enum EPUBReaderError: LocalizedError {
     }
 }
 
-private enum EPUBProgressStore {
+enum EPUBProgressStore {
     private static let keyPrefix = "epub-location-"
 
     static func load(for bookID: UUID) -> Locator? {
@@ -327,5 +327,9 @@ private enum EPUBProgressStore {
     static func save(_ locator: Locator, for bookID: UUID) {
         guard let json = try? locator.jsonString() else { return }
         UserDefaults.standard.set(json, forKey: keyPrefix + bookID.uuidString)
+    }
+
+    static func remove(for bookID: UUID) {
+        UserDefaults.standard.removeObject(forKey: keyPrefix + bookID.uuidString)
     }
 }

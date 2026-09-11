@@ -28,6 +28,10 @@ final class ReaderBookmarkStore: ObservableObject {
         load()
     }
 
+    static func removeAll(for bookID: UUID, defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: "reader-bookmarks-\(bookID.uuidString)")
+    }
+
     func containsPage(_ pageIndex: Int) -> Bool {
         bookmarks.contains { $0.pageIndex == pageIndex }
     }

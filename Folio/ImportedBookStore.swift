@@ -17,6 +17,12 @@ enum ImportedBookStore {
         try? data.write(to: fileURL, options: .atomic)
     }
 
+    static func removeImportedFile(for book: Book) {
+        guard let fileName = book.fileName else { return }
+        let fileURL = booksDirectory.appending(path: fileName)
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
     static var booksDirectory: URL {
         let directory = URL.documentsDirectory.appending(path: "Books", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

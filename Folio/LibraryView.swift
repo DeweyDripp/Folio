@@ -6,6 +6,8 @@ struct LibraryView: View {
     @State private var isShowingImporter = false
     @State private var isImporting = false
     @State private var importError: String?
+    @State private var bookToEdit: Book?
+    @State private var bookToDelete: Book?
 
     private let columns = [
         GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 24)
@@ -30,6 +32,19 @@ struct LibraryView: View {
                                     BookCoverView(book: book)
                                 }
                                 .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button {
+                                        bookToEdit = book
+                                    } label: {
+                                        Label("Book Info", systemImage: "info.circle")
+                                    }
+
+                                    Button(role: .destructive) {
+                                        bookToDelete = book
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                             }
                         }
                         .padding(24)
@@ -55,6 +70,24 @@ struct LibraryView: View {
                     await importBook(from: result)
                 }
             }
+            .sheet(item: $bookToEdit) { book in
+                BookMetadataEditor(book: book) { updatedBook in
+                    updateBook(updatedBook)
+                }
+            }
+            .confirmationDialog(
+                "Remove Book?",
+                isPresented: isShowingDeleteConfirmation,
+                titleVisibility: .visible,
+                presenting: bookToDelete
+            ) { book in
+                Button("Delete \(book.title)", role: .destructive) {
+                    deleteBook(book)
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: { book in
+                Text("This removes \(book.title) and its reading progress from Folio. Your original imported file is not affected.")
+            }
             .overlay {
                 if isImporting {
                     ProgressView("Importing book…")
@@ -75,6 +108,31 @@ struct LibraryView: View {
             get: { importError != nil },
             set: { if !$0 { importError = nil } }
         )
+    }
+
+    private var isShowingDeleteConfirmation: Binding<Bool> {
+        Binding(
+            get: { bookToDelete != nil },
+            set: { if !$0 { bookToDelete = nil } }
+        )
+    }
+
+    private func updateBook(_ updatedBook: Book) {
+        guard let index = importedBooks.firstIndex(where: { $0.id == updatedBook.id }) else {
+            return
+        }
+
+        importedBooks[index] = updatedBook
+        ImportedBookStore.save(importedBooks)
+    }
+
+    private func deleteBook(_ book: Book) {
+        importedBooks.removeAll { $0.id == book.id }
+        ImportedBookStore.save(importedBooks)
+        ImportedBookStore.removeImportedFile(for: book)
+        ReaderBookmarkStore.removeAll(for: book.id)
+        EPUBProgressStore.remove(for: book.id)
+        bookToDelete = nil
     }
 
     @MainActor

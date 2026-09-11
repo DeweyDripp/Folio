@@ -42,4 +42,18 @@ struct Book: Identifiable, Codable {
     var bookFormat: BookFormat {
         format ?? .text
     }
+
+    func updatingMetadata(title: String, author: String) -> Book {
+        Book(
+            id: id,
+            title: title,
+            author: author,
+            coverSymbol: coverSymbol,
+            coverColorName: coverColorName,
+            pages: pages,
+            format: format,
+            fileName: fileName,
+            coverData: coverData
+        )
+    }
 }
