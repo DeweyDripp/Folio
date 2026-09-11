@@ -11,24 +11,30 @@ struct LibraryView: View {
         GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 24)
     ]
 
-    private var books: [Book] {
-        importedBooks + sampleBooks
-    }
-
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVGrid(columns: columns, spacing: 28) {
-                    ForEach(books) { book in
-                        NavigationLink {
-                            ReaderView(book: book)
-                        } label: {
-                            BookCoverView(book: book)
+            Group {
+                if importedBooks.isEmpty {
+                    ContentUnavailableView {
+                        Label("Your Library Is Empty", systemImage: "books.vertical")
+                    } description: {
+                        Text("Tap the plus button to import an EPUB, PDF, or text file.")
+                    }
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: 28) {
+                            ForEach(importedBooks) { book in
+                                NavigationLink {
+                                    ReaderView(book: book)
+                                } label: {
+                                    BookCoverView(book: book)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
-                        .buttonStyle(.plain)
+                        .padding(24)
                     }
                 }
-                .padding(24)
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Library")

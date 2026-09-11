@@ -201,6 +201,14 @@ private struct PageView: View {
 
 #Preview("Narrow") {
     NavigationStack {
-        ReaderView(book: sampleBooks[0])
+        ReaderView(
+            book: Book(
+                title: "Preview Book",
+                author: "Folio",
+                coverSymbol: "book.closed.fill",
+                coverColorName: "indigo",
+                pages: ["This is a preview page for the Folio reader."]
+            )
+        )
     }
 }
