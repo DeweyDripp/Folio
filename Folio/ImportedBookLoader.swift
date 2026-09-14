@@ -1,10 +1,19 @@
+import CryptoKit
 import Foundation
 import PDFKit
 import ReadiumShared
 import UIKit
 
 enum ImportedBookLoader {
-    static func load(from url: URL) async throws -> Book {
+    static func fingerprint(for url: URL) throws -> String {
+        let hasAccess = url.startAccessingSecurityScopedResource()
+        defer {
+            if hasAccess { url.stopAccessingSecurityScopedResource() }
+        }
+        return try fileFingerprint(for: url)
+    }
+
+    static func load(from url: URL, fingerprint suppliedFingerprint: String? = nil) async throws -> Book {
         let hasAccess = url.startAccessingSecurityScopedResource()
         defer {
             if hasAccess {
@@ -13,22 +22,25 @@ enum ImportedBookLoader {
         }
 
         let title = url.deletingPathExtension().lastPathComponent
+        let fingerprint = try suppliedFingerprint ?? fileFingerprint(for: url)
 
         if url.pathExtension.lowercased() == "epub" {
-            return try await loadEPUB(from: url, fallbackTitle: title)
+            return try await loadEPUB(from: url, fallbackTitle: title, fingerprint: fingerprint)
         }
 
         if url.pathExtension.lowercased() == "pdf" {
-            return try loadPDF(from: url, title: title)
+            return try loadPDF(from: url, title: title, fingerprint: fingerprint)
         }
 
-        return try loadText(from: url, title: title)
+        return try loadText(from: url, title: title, fingerprint: fingerprint)
     }
 
-    private static func loadEPUB(from url: URL, fallbackTitle: String) async throws -> Book {
+    private static func loadEPUB(from url: URL, fallbackTitle: String, fingerprint: String) async throws -> Book {
         let id = UUID()
         let fileName = id.uuidString + ".epub"
         let savedURL = ImportedBookStore.booksDirectory.appending(path: fileName)
+        let coverFileName = id.uuidString + ".jpg"
+        let coverURL = ImportedBookStore.coversDirectory.appending(path: coverFileName)
 
         try FileManager.default.copyItem(at: url, to: savedURL)
 
@@ -40,6 +52,10 @@ enum ImportedBookLoader {
 
             let authors = publication.metadata.authors.map(\.name).joined(separator: ", ")
             let cover = try? await publication.cover().get()
+            let coverData = cover?.jpegData(compressionQuality: 0.8)
+            if let coverData {
+                try coverData.write(to: coverURL, options: .atomic)
+            }
 
             return Book(
                 id: id,
@@ -50,15 +66,17 @@ enum ImportedBookLoader {
                 pages: [],
                 format: .epub,
                 fileName: fileName,
-                coverData: cover?.jpegData(compressionQuality: 0.8)
+                coverFileName: coverData == nil ? nil : coverFileName,
+                fingerprint: fingerprint
             )
         } catch {
             try? FileManager.default.removeItem(at: savedURL)
+            try? FileManager.default.removeItem(at: coverURL)
             throw error
         }
     }
 
-    private static func loadPDF(from url: URL, title: String) throws -> Book {
+    private static func loadPDF(from url: URL, title: String, fingerprint: String) throws -> Book {
         guard let document = PDFDocument(url: url) else {
             throw ImportError.unreadableFile
         }
@@ -71,28 +89,45 @@ enum ImportedBookLoader {
             throw ImportError.noReadableText
         }
 
-        return importedBook(title: title, pages: pages, format: .pdf)
+        return importedBook(title: title, pages: pages, format: .pdf, fingerprint: fingerprint)
     }
 
-    private static func loadText(from url: URL, title: String) throws -> Book {
+    private static func loadText(from url: URL, title: String, fingerprint: String) throws -> Book {
         let text = try String(contentsOf: url, encoding: .utf8).trimmedForReading
 
         guard !text.isEmpty else {
             throw ImportError.noReadableText
         }
 
-        return importedBook(title: title, pages: paginate(text), format: .text)
+        return importedBook(title: title, pages: paginate(text), format: .text, fingerprint: fingerprint)
     }
 
-    private static func importedBook(title: String, pages: [String], format: BookFormat) -> Book {
+    private static func importedBook(
+        title: String,
+        pages: [String],
+        format: BookFormat,
+        fingerprint: String
+    ) -> Book {
         Book(
             title: title,
             author: "Imported Book",
             coverSymbol: "doc.text.fill",
             coverColorName: "orange",
             pages: pages,
-            format: format
+            format: format,
+            fingerprint: fingerprint
         )
+    }
+
+    private static func fileFingerprint(for url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+
+        var hasher = SHA256()
+        while let chunk = try handle.read(upToCount: 1_048_576), !chunk.isEmpty {
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     private static func paginate(_ text: String, targetLength: Int = 1_600) -> [String] {

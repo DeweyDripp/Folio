@@ -13,6 +13,8 @@ struct ReaderMenuBar: View {
     let supportsPublisherStyles: Bool
     let supportsHighlights: Bool
     let chapters: [ReaderChapter]
+    let currentLocationTitle: String
+    let progressFraction: Double
     let isCurrentLocationBookmarked: Bool
     let selectChapter: (ReaderChapter) -> Void
     let selectBookmark: (ReaderBookmark) -> Void
@@ -100,6 +102,21 @@ struct ReaderMenuBar: View {
     private var navigationPanel: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(currentLocationTitle)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        Text("\(Int((progressFraction * 100).rounded()))% complete")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+                }
+                ProgressView(value: progressFraction)
+                    .padding(.bottom, 8)
+
                 HStack {
                     Label("Bookmarks", systemImage: "bookmark")
                         .font(.subheadline.weight(.semibold))

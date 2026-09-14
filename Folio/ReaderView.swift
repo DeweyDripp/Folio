@@ -43,6 +43,9 @@ struct ReaderView: View {
                 .accessibilityLabel("Reader menu for \(book.title)")
             }
         }
+        .onAppear {
+            ReadingProgressStore.shared.markOpened(book.id)
+        }
     }
 }
 
@@ -55,6 +58,7 @@ private struct PagedReaderView: View {
 
     @State private var currentPage = 0
     @State private var activePageStep = 1
+    @State private var restoredProgress = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(book: Book, settings: ReaderSettings, showsMenu: Binding<Bool>) {
@@ -79,6 +83,10 @@ private struct PagedReaderView: View {
                     .padding(.horizontal, 24)
                     .padding(.vertical, 14)
                     .background(.bar)
+
+                if settings.progressDisplay != .hidden {
+                    ReaderProgressBar(title: "Book", fraction: pageProgress)
+                }
             }
             .onAppear {
                 activePageStep = pageStep
@@ -99,6 +107,8 @@ private struct PagedReaderView: View {
                     supportsPublisherStyles: false,
                     supportsHighlights: false,
                     chapters: chapters,
+                    currentLocationTitle: "Page \(currentPage + 1)",
+                    progressFraction: pageProgress,
                     isCurrentLocationBookmarked: bookmarks.containsPage(currentPage),
                     selectChapter: { chapter in
                         guard let page = Int(chapter.id) else { return }
@@ -131,12 +141,23 @@ private struct PagedReaderView: View {
         }
         .background(settings.theme.backgroundColor)
         .preferredColorScheme(settings.theme == .dark ? .dark : .light)
+        .onAppear {
+            restoreProgressIfNeeded()
+        }
+        .onChange(of: currentPage) { _, page in
+            saveProgress(page)
+        }
     }
 
     private var chapters: [ReaderChapter] {
         book.pages.indices.map { page in
             ReaderChapter(id: String(page), title: "Page \(page + 1)", depth: 0)
         }
+    }
+
+    private var pageProgress: Double {
+        guard !book.pages.isEmpty else { return 0 }
+        return min(1, Double(currentPage + 1) / Double(book.pages.count))
     }
 
     private func closeMenu() {
@@ -219,6 +240,25 @@ private struct PagedReaderView: View {
         let alignedPage = page - (page % activePageStep)
 
         currentPage = alignedPage
+    }
+
+    private func restoreProgressIfNeeded() {
+        guard !restoredProgress else { return }
+        restoredProgress = true
+        let savedPage = ReadingProgressStore.shared.progress(for: book.id)?.pageIndex ?? 0
+        guard book.pages.indices.contains(savedPage) else { return }
+        currentPage = savedPage - (savedPage % activePageStep)
+        saveProgress(currentPage)
+    }
+
+    private func saveProgress(_ page: Int) {
+        guard book.pages.indices.contains(page) else { return }
+        ReadingProgressStore.shared.savePage(
+            page,
+            pageCount: book.pages.count,
+            title: "Page \(page + 1)",
+            for: book.id
+        )
     }
 }
 

@@ -7,12 +7,14 @@ struct BookMetadataEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var title: String
     @State private var author: String
+    @State private var shelf: String
 
     init(book: Book, save: @escaping (Book) -> Void) {
         self.book = book
         self.save = save
         _title = State(initialValue: book.title)
         _author = State(initialValue: book.author)
+        _shelf = State(initialValue: book.normalizedShelf ?? "")
     }
 
     var body: some View {
@@ -23,6 +25,9 @@ struct BookMetadataEditor: View {
                         .textInputAutocapitalization(.words)
 
                     TextField("Author", text: $author)
+                        .textInputAutocapitalization(.words)
+
+                    TextField("Shelf (optional)", text: $shelf)
                         .textInputAutocapitalization(.words)
                 }
 
@@ -50,7 +55,8 @@ struct BookMetadataEditor: View {
                         save(
                             book.updatingMetadata(
                                 title: cleanTitle,
-                                author: cleanAuthor.isEmpty ? "Unknown Author" : cleanAuthor
+                                author: cleanAuthor.isEmpty ? "Unknown Author" : cleanAuthor,
+                                shelf: shelf
                             )
                         )
                         dismiss()

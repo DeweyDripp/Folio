@@ -20,7 +20,6 @@ final class PaperCurlView: UIView {
         self.turnsLeft = turnsLeft
         super.init(frame: .zero)
         isUserInteractionEnabled = false
-        accessibilityIdentifier = "reader.paperCurl"
         clipsToBounds = true
 
         for index in 0..<stripCount {

@@ -2,12 +2,17 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct LibraryView: View {
-    @State private var importedBooks = ImportedBookStore.load()
+    @ObservedObject private var readingProgress = ReadingProgressStore.shared
+    @State private var importedBooks: [Book] = []
+    @State private var isLoadingLibrary = true
     @State private var isShowingImporter = false
     @State private var isImporting = false
-    @State private var importError: String?
+    @State private var presentedError: LibraryError?
     @State private var bookToEdit: Book?
     @State private var bookToDelete: Book?
+    @State private var searchText = ""
+    @State private var selectedShelf = "__all_shelves__"
+    @AppStorage("library-sort") private var sortRawValue = LibrarySortOption.recent.rawValue
 
     private let columns = [
         GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 24)
@@ -16,20 +21,27 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if importedBooks.isEmpty {
+                if isLoadingLibrary {
+                    ProgressView("Loading library…")
+                } else if importedBooks.isEmpty {
                     ContentUnavailableView {
                         Label("Your Library Is Empty", systemImage: "books.vertical")
                     } description: {
                         Text("Tap the plus button to import an EPUB, PDF, or text file.")
                     }
+                } else if visibleBooks.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
                 } else {
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 28) {
-                            ForEach(importedBooks) { book in
+                            ForEach(visibleBooks) { book in
                                 NavigationLink {
                                     ReaderView(book: book)
                                 } label: {
-                                    BookCoverView(book: book)
+                                    BookCoverView(
+                                        book: book,
+                                        progress: readingProgress.progress(for: book.id)
+                                    )
                                 }
                                 .buttonStyle(.plain)
                                 .contextMenu {
@@ -62,7 +74,29 @@ struct LibraryView: View {
                     }
                 }
 
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Menu {
+                        Picker("Sort By", selection: sortSelection) {
+                            ForEach(LibrarySortOption.allCases) { option in
+                                Label(option.title, systemImage: option.systemImage)
+                                    .tag(option)
+                            }
+                        }
+
+                        if !shelves.isEmpty {
+                            Divider()
+                            Picker("Shelf", selection: $selectedShelf) {
+                                Text("All Shelves").tag(Self.allShelves)
+                                Text("Unfiled").tag(Self.unfiledShelf)
+                                ForEach(shelves, id: \.self) { shelf in
+                                    Text(shelf).tag(shelf)
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("Organize Library", systemImage: "arrow.up.arrow.down.circle")
+                    }
+
                     Button {
                         isShowingImporter = true
                     } label: {
@@ -78,6 +112,7 @@ struct LibraryView: View {
                     await importBook(from: result)
                 }
             }
+            .searchable(text: $searchText, prompt: "Search titles and authors")
             .sheet(item: $bookToEdit) { book in
                 BookMetadataEditor(book: book) { updatedBook in
                     updateBook(updatedBook)
@@ -103,19 +138,59 @@ struct LibraryView: View {
                         .folioControlPanel(cornerRadius: 16)
                 }
             }
-            .alert("Couldn’t Import Book", isPresented: isShowingImportError) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(importError ?? "Please try another file.")
+            .alert(item: $presentedError) { error in
+                Alert(
+                    title: Text(error.title),
+                    message: Text(error.message),
+                    dismissButton: .cancel(Text("OK"))
+                )
+            }
+            .task {
+                loadLibrary()
+                if let message = readingProgress.errorMessage {
+                    presentedError = LibraryError(title: "Couldn’t Load Progress", message: message)
+                    readingProgress.clearError()
+                }
+            }
+            .onChange(of: readingProgress.errorMessage) { _, message in
+                guard let message else { return }
+                presentedError = LibraryError(title: "Couldn’t Save Progress", message: message)
+                readingProgress.clearError()
             }
         }
     }
 
-    private var isShowingImportError: Binding<Bool> {
+    private static let allShelves = "__all_shelves__"
+    private static let unfiledShelf = "__unfiled_shelf__"
+
+    private var sortSelection: Binding<LibrarySortOption> {
         Binding(
-            get: { importError != nil },
-            set: { if !$0 { importError = nil } }
+            get: { LibrarySortOption(rawValue: sortRawValue) ?? .recent },
+            set: { sortRawValue = $0.rawValue }
         )
+    }
+
+    private var shelves: [String] {
+        Set(importedBooks.compactMap(\.normalizedShelf)).sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+    }
+
+    private var visibleBooks: [Book] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filtered = importedBooks.filter { book in
+            let matchesSearch = query.isEmpty
+                || book.title.localizedCaseInsensitiveContains(query)
+                || book.author.localizedCaseInsensitiveContains(query)
+            let matchesShelf = selectedShelf == Self.allShelves
+                || (selectedShelf == Self.unfiledShelf && book.normalizedShelf == nil)
+                || book.normalizedShelf == selectedShelf
+            return matchesSearch && matchesShelf
+        }
+
+        return sortSelection.wrappedValue.sort(filtered) { bookID in
+            readingProgress.progress(for: bookID)?.updatedAt
+        }
     }
 
     private var isShowingDeleteConfirmation: Binding<Bool> {
@@ -130,18 +205,38 @@ struct LibraryView: View {
             return
         }
 
-        importedBooks[index] = updatedBook
-        ImportedBookStore.save(importedBooks)
+        var updatedBooks = importedBooks
+        updatedBooks[index] = updatedBook
+        do {
+            try ImportedBookStore.save(updatedBooks)
+            importedBooks = updatedBooks
+        } catch {
+            showStorageError()
+        }
     }
 
     private func deleteBook(_ book: Book) {
-        importedBooks.removeAll { $0.id == book.id }
-        ImportedBookStore.save(importedBooks)
-        ImportedBookStore.removeImportedFile(for: book)
-        ReaderBookmarkStore.removeAll(for: book.id)
-        ReaderHighlightStore.removeAll(for: book.id)
-        EPUBProgressStore.remove(for: book.id)
-        bookToDelete = nil
+        let remainingBooks = importedBooks.filter { $0.id != book.id }
+        do {
+            try ImportedBookStore.save(remainingBooks)
+            importedBooks = remainingBooks
+            ReaderBookmarkStore.removeAll(for: book.id)
+            ReaderHighlightStore.removeAll(for: book.id)
+            readingProgress.remove(for: book.id)
+            EPUBProgressStore.removeLegacyProgress(for: book.id)
+            bookToDelete = nil
+
+            do {
+                try ImportedBookStore.removeImportedFiles(for: book)
+            } catch {
+                presentedError = LibraryError(
+                    title: "Book Removed",
+                    message: "The book was removed from your library, but Folio couldn’t finish cleaning up its stored file."
+                )
+            }
+        } catch {
+            showStorageError()
+        }
     }
 
     @MainActor
@@ -151,12 +246,102 @@ struct LibraryView: View {
 
         do {
             let url = try result.get()
-            let book = try await ImportedBookLoader.load(from: url)
-            importedBooks.insert(book, at: 0)
-            ImportedBookStore.save(importedBooks)
+            let fingerprint = try ImportedBookLoader.fingerprint(for: url)
+            guard !importedBooks.contains(where: { $0.fingerprint == fingerprint }) else {
+                throw DuplicateBookError()
+            }
+
+            let book = try await ImportedBookLoader.load(from: url, fingerprint: fingerprint)
+            var updatedBooks = importedBooks
+            updatedBooks.insert(book, at: 0)
+            do {
+                try ImportedBookStore.save(updatedBooks)
+                importedBooks = updatedBooks
+            } catch {
+                try? ImportedBookStore.removeImportedFiles(for: book)
+                throw error
+            }
         } catch {
-            importError = error.localizedDescription
+            presentedError = LibraryError(title: "Couldn’t Import Book", message: error.localizedDescription)
         }
+    }
+
+    private func loadLibrary() {
+        defer { isLoadingLibrary = false }
+        do {
+            importedBooks = try ImportedBookStore.load()
+        } catch {
+            presentedError = LibraryError(
+                title: "Couldn’t Load Library",
+                message: "Folio couldn’t read its library information. Your imported book files have not been deleted."
+            )
+        }
+    }
+
+    private func showStorageError() {
+        presentedError = LibraryError(
+            title: "Couldn’t Save Library",
+            message: "Folio couldn’t save that change. Check that your device has available storage, then try again."
+        )
+    }
+}
+
+enum LibrarySortOption: String, CaseIterable, Identifiable {
+    case recent
+    case title
+    case author
+    case imported
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .recent: "Recently Read"
+        case .title: "Title"
+        case .author: "Author"
+        case .imported: "Recently Added"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .recent: "clock"
+        case .title: "textformat"
+        case .author: "person"
+        case .imported: "calendar.badge.plus"
+        }
+    }
+
+    func sort(_ books: [Book], lastRead: (UUID) -> Date?) -> [Book] {
+        books.sorted { lhs, rhs in
+            switch self {
+            case .recent:
+                let leftDate = lastRead(lhs.id) ?? lhs.importDate
+                let rightDate = lastRead(rhs.id) ?? rhs.importDate
+                return leftDate > rightDate
+            case .title:
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            case .author:
+                let authorOrder = lhs.author.localizedCaseInsensitiveCompare(rhs.author)
+                return authorOrder == .orderedSame
+                    ? lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+                    : authorOrder == .orderedAscending
+            case .imported:
+                return lhs.importDate > rhs.importDate
+            }
+        }
+    }
+}
+
+private struct LibraryError: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+}
+
+private struct DuplicateBookError: LocalizedError {
+    var errorDescription: String? {
+        "That exact book is already in your Folio library."
     }
 }
 

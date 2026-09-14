@@ -41,6 +41,18 @@ struct EPUBReaderView: View {
                 ProgressView("Opening book…")
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if settings.progressDisplay != .hidden, model.navigator != nil {
+                ReaderProgressBar(
+                    title: settings.progressDisplay == .chapter
+                        ? model.currentLocationTitle
+                        : "Book",
+                    fraction: settings.progressDisplay == .chapter
+                        ? model.currentChapterProgress
+                        : model.currentProgress
+                )
+            }
+        }
         .overlay(alignment: .top) {
             if showsMenu {
                 ReaderMenuBar(
@@ -50,6 +62,8 @@ struct EPUBReaderView: View {
                     supportsPublisherStyles: true,
                     supportsHighlights: true,
                     chapters: model.chapters,
+                    currentLocationTitle: model.currentLocationTitle,
+                    progressFraction: model.currentProgress,
                     isCurrentLocationBookmarked: isCurrentLocationBookmarked,
                     selectChapter: { chapter in
                         Task {
@@ -140,6 +154,8 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
     @Published private(set) var chapters: [ReaderChapter] = []
     @Published private(set) var currentLocationJSON: String?
     @Published private(set) var currentLocationTitle = "Current location"
+    @Published private(set) var currentProgress = 0.0
+    @Published private(set) var currentChapterProgress = 0.0
 
     private let book: Book
     private let settings: ReaderSettings
@@ -286,6 +302,8 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
     private func updateCurrentLocation(_ locator: Locator?) {
         guard let locator else { return }
         currentLocationJSON = try? locator.jsonString()
+        currentProgress = min(1, max(0, locator.locations.totalProgression ?? currentProgress))
+        currentChapterProgress = min(1, max(0, locator.locations.progression ?? currentChapterProgress))
 
         if let title = locator.title, !title.isEmpty {
             currentLocationTitle = title
@@ -300,160 +318,6 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
 
 }
 
-private struct EPUBNavigatorContainer: UIViewControllerRepresentable {
-    let navigator: EPUBNavigatorViewController
-    @ObservedObject var settings: ReaderSettings
-    let availableWidth: CGFloat
-    let onHighlightSelection: (Locator) -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeUIViewController(context: Context) -> EPUBHostViewController {
-        EPUBHostViewController(
-            navigator: navigator,
-            onHighlightSelection: onHighlightSelection,
-            usesPageTurnAnimation: settings.usesPageTurnAnimation
-        )
-    }
-
-    func updateUIViewController(_ viewController: EPUBHostViewController, context: Context) {
-        viewController.onHighlightSelection = onHighlightSelection
-        viewController.usesPageTurnAnimation = settings.usesPageTurnAnimation
-        viewController.paperColor = UIColor(settings.theme.backgroundColor)
-        let showsTwoPages = settings.pageLayout.showsTwoPages(for: availableWidth)
-        let signature = [
-            String(showsTwoPages),
-            settings.theme.rawValue,
-            settings.fontIdentifier,
-            String(settings.fontScale),
-            String(settings.lineHeight),
-            String(settings.pageMargins),
-            String(settings.usesPublisherStyles)
-        ].joined(separator: "|")
-
-        guard context.coordinator.settingsSignature != signature else { return }
-        context.coordinator.settingsSignature = signature
-
-        navigator.submitPreferences(
-            EPUBPreferences(
-                columnCount: showsTwoPages ? .two : .one,
-                fontFamily: settings.readiumFont,
-                fontSize: settings.fontScale,
-                lineHeight: settings.lineHeight,
-                pageMargins: settings.pageMargins,
-                publisherStyles: settings.usesPublisherStyles,
-                spread: showsTwoPages ? .always : .never,
-                theme: settings.theme.readiumTheme
-            )
-        )
-    }
-
-    final class Coordinator {
-        var settingsSignature: String?
-    }
-}
-
-private extension ReaderTheme {
-    var readiumTheme: ReadiumNavigator.Theme {
-        switch self {
-        case .light: .light
-        case .sepia: .sepia
-        case .dark: .dark
-        }
-    }
-}
-
-private extension ReaderSettings {
-    var readiumFont: ReadiumNavigator.FontFamily {
-        if let customFontName {
-            return ReadiumNavigator.FontFamily(rawValue: customFontName)
-        }
-
-        return switch font {
-        case .serif: ReadiumNavigator.FontFamily.serif
-        case .sansSerif: ReadiumNavigator.FontFamily.sansSerif
-        case .athelas: ReadiumNavigator.FontFamily.athelas
-        case .openDyslexic: ReadiumNavigator.FontFamily.openDyslexic
-        }
-    }
-}
-
-private final class EPUBHostViewController: PaperTurnController {
-    private let navigator: EPUBNavigatorViewController
-    var onHighlightSelection: (Locator) -> Void
-
-    init(
-        navigator: EPUBNavigatorViewController,
-        onHighlightSelection: @escaping (Locator) -> Void,
-        usesPageTurnAnimation: Bool
-    ) {
-        self.navigator = navigator
-        self.onHighlightSelection = onHighlightSelection
-        super.init(nibName: nil, bundle: nil)
-        self.usesPageTurnAnimation = usesPageTurnAnimation
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-
-        addChild(navigator)
-        navigator.view.frame = view.bounds
-        navigator.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        view.addSubview(navigator.view)
-        navigator.didMove(toParent: self)
-
-        view.accessibilityIdentifier = "epub.reader"
-
-        canTurnPage = { [weak navigator] in navigator?.currentSelection == nil }
-        prepareTurn = { [weak navigator] left in
-            guard let navigator, let original = navigator.currentLocation else { return nil }
-            let forward = left == (navigator.publication.metadata.readingProgression != .rtl)
-            let moved = forward
-                ? await navigator.goForward(options: NavigatorGoOptions(animated: false))
-                : await navigator.goBackward(options: NavigatorGoOptions(animated: false))
-            guard moved else { return nil }
-            return { _ = await navigator.go(to: original, options: NavigatorGoOptions(animated: false)) }
-        }
-        navigator.addObserver(.tap { [weak self] event in
-            guard let self, self.navigator.currentSelection == nil else { return false }
-            let width = self.view.bounds.width
-            if event.location.x < width * 0.2 {
-                self.turnByTap(left: false)
-                return true
-            }
-            if event.location.x > width * 0.8 {
-                self.turnByTap(left: true)
-                return true
-            }
-            return false
-        })
-    }
-
-    @objc func highlightSelection() {
-        guard let selection = navigator.currentSelection else { return }
-        onHighlightSelection(selection.locator)
-        navigator.clearSelection()
-    }
-}
-
-private extension ReaderHighlightColor {
-    var uiColor: UIColor {
-        switch self {
-        case .yellow: UIColor(red: 1, green: 0.82, blue: 0.2, alpha: 1)
-        case .pink: UIColor(red: 1, green: 0.48, blue: 0.62, alpha: 1)
-        case .green: UIColor(red: 0.42, green: 0.82, blue: 0.48, alpha: 1)
-        case .blue: UIColor(red: 0.35, green: 0.66, blue: 1, alpha: 1)
-        }
-    }
-}
-
 private enum EPUBReaderError: LocalizedError {
     case missingFile
 
@@ -462,23 +326,38 @@ private enum EPUBReaderError: LocalizedError {
     }
 }
 
+@MainActor
 enum EPUBProgressStore {
     private static let keyPrefix = "epub-location-"
 
     static func load(for bookID: UUID) -> Locator? {
-        guard let json = UserDefaults.standard.string(forKey: keyPrefix + bookID.uuidString) else {
-            return nil
+        if let json = ReadingProgressStore.shared.progress(for: bookID)?.locatorJSON {
+            return try? Locator(jsonString: json)
         }
 
-        return try? Locator(jsonString: json)
+        // Migrate progress written by the first Folio EPUB reader.
+        let legacyKey = keyPrefix + bookID.uuidString
+        guard let json = UserDefaults.standard.string(forKey: legacyKey),
+              let locator = try? Locator(jsonString: json)
+        else {
+            return nil
+        }
+        save(locator, for: bookID)
+        UserDefaults.standard.removeObject(forKey: legacyKey)
+        return locator
     }
 
     static func save(_ locator: Locator, for bookID: UUID) {
         guard let json = try? locator.jsonString() else { return }
-        UserDefaults.standard.set(json, forKey: keyPrefix + bookID.uuidString)
+        ReadingProgressStore.shared.saveEPUB(
+            locatorJSON: json,
+            fraction: locator.locations.totalProgression,
+            chapterTitle: locator.title,
+            for: bookID
+        )
     }
 
-    static func remove(for bookID: UUID) {
+    static func removeLegacyProgress(for bookID: UUID) {
         UserDefaults.standard.removeObject(forKey: keyPrefix + bookID.uuidString)
     }
 }

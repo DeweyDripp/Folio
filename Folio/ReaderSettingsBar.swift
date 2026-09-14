@@ -80,6 +80,20 @@ struct ReaderAppearanceSettings: View {
             Toggle("Page turn animation", isOn: $settings.usesPageTurnAnimation)
                 .font(.subheadline)
 
+            HStack {
+                Label("Bottom progress", systemImage: "chart.bar.fill")
+                    .font(.subheadline)
+
+                Spacer()
+
+                Picker("Bottom progress", selection: $settings.progressDisplay) {
+                    ForEach(ReaderProgressDisplay.allCases) { display in
+                        Text(display.title).tag(display)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+
             if supportsPublisherStyles {
                 Toggle("Use publisher formatting", isOn: $settings.usesPublisherStyles)
                     .font(.subheadline)
