@@ -2,7 +2,6 @@ import Combine
 import ReadiumNavigator
 import ReadiumShared
 import SwiftUI
-import UIKit
 
 struct EPUBReaderView: View {
     @StateObject private var model: EPUBReaderModel

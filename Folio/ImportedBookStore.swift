@@ -2,6 +2,7 @@ import Foundation
 
 enum ImportedBookStore {
     private static let libraryFileName = "ImportedBooks.json"
+    private static let coverCache = NSCache<NSString, NSData>()
 
     static func load() throws -> [Book] {
         guard FileManager.default.fileExists(atPath: libraryURL.path) else {
@@ -68,6 +69,7 @@ enum ImportedBookStore {
         if let coverFileName = book.coverFileName {
             try removeIfPresent(coversDirectory.appending(path: coverFileName))
         }
+        coverCache.removeObject(forKey: book.id.uuidString as NSString)
     }
 
     static func coverData(for book: Book) -> Data? {
@@ -75,8 +77,19 @@ enum ImportedBookStore {
             return coverData
         }
 
-        guard let fileName = book.coverFileName else { return nil }
-        return try? Data(contentsOf: coversDirectory.appending(path: fileName))
+        let cacheKey = book.id.uuidString as NSString
+        if let cached = coverCache.object(forKey: cacheKey) {
+            return cached as Data
+        }
+
+        guard let fileName = book.coverFileName,
+              let data = try? Data(contentsOf: coversDirectory.appending(path: fileName))
+        else {
+            return nil
+        }
+
+        coverCache.setObject(data as NSData, forKey: cacheKey)
+        return data
     }
 
     static var booksDirectory: URL {
