@@ -4,21 +4,32 @@ struct ReaderView: View {
     let book: Book
     @StateObject private var settings = ReaderSettings()
     @State private var showsMenu = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        Group {
-            if book.bookFormat == .epub {
-                EPUBReaderView(
-                    book: book,
-                    settings: settings,
-                    showsMenu: $showsMenu
-                )
-            } else {
-                PagedReaderView(
-                    book: book,
-                    settings: settings,
-                    showsMenu: $showsMenu
-                )
+        GeometryReader { geometry in
+            let isLandscape = geometry.size.width > geometry.size.height
+
+            Group {
+                if book.bookFormat == .epub {
+                    EPUBReaderView(
+                        book: book,
+                        settings: settings,
+                        showsMenu: $showsMenu
+                    )
+                } else {
+                    PagedReaderView(
+                        book: book,
+                        settings: settings,
+                        showsMenu: $showsMenu
+                    )
+                }
+            }
+            .toolbar(isLandscape ? .hidden : .visible, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if isLandscape {
+                    landscapeHeader
+                }
             }
         }
         .navigationTitle(book.title)
@@ -46,6 +57,50 @@ struct ReaderView: View {
         .onAppear {
             ReadingProgressStore.shared.markOpened(book.id)
         }
+    }
+
+    private var landscapeHeader: some View {
+        HStack(spacing: 14) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.title3.weight(.semibold))
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .accessibilityLabel("Back to Library")
+
+            Spacer()
+
+            Button {
+                withAnimation(.snappy) {
+                    showsMenu.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(book.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Image(systemName: showsMenu ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.semibold))
+                }
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .background(.ultraThinMaterial, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Reader menu for \(book.title)")
+
+            Spacer()
+
+            // Balances the back button so the title stays visually centered.
+            Color.clear
+                .frame(width: 44, height: 44)
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 8)
+        .background(.clear)
     }
 }
 
@@ -272,7 +327,7 @@ private struct PageView: View {
                 .font(settings.swiftUIFont(size: 20 * CGFloat(settings.fontScale)))
                 .foregroundStyle(settings.theme.textColor)
                 .lineSpacing(8 * CGFloat(settings.lineHeight))
-                .frame(maxWidth: 620, alignment: .topLeading)
+                .frame(maxWidth: 900, alignment: .topLeading)
                 .padding(.horizontal, 32 * CGFloat(settings.pageMargins))
                 .padding(.vertical, 40)
         }
