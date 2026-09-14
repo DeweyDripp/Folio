@@ -74,6 +74,14 @@ struct LibraryView: View {
                     }
                 }
 
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        LibraryInsightsView(books: importedBooks)
+                    } label: {
+                        Label("Insights", systemImage: "chart.bar.xaxis")
+                    }
+                }
+
                 ToolbarItemGroup(placement: .primaryAction) {
                     Menu {
                         Picker("Sort By", selection: sortSelection) {

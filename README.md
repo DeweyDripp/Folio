@@ -21,7 +21,10 @@ Folio is a SwiftUI ebook reader project built for a calm, personal reading exper
 - Light, sepia, and dark themes
 - Built-in font choices and imported custom fonts
 - Edit title, author, and shelf metadata
+- Edit publisher, publication year, language, ISBN, and description metadata
+- Look up missing book metadata through the free Open Library Search API
 - Search, sort, and filter the library
+- Library-wide highlights, notes, and reading statistics
 - Duplicate-import protection
 - Cover artwork and fallback cover designs
 - Reduce Motion support

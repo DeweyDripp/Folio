@@ -20,6 +20,11 @@ struct Book: Identifiable, Codable {
     let fingerprint: String?
     let importedAt: Date?
     let shelf: String?
+    let publisher: String?
+    let publishYear: Int?
+    let language: String?
+    let isbn: String?
+    let description: String?
 
     init(
         id: UUID = UUID(),
@@ -34,7 +39,12 @@ struct Book: Identifiable, Codable {
         coverFileName: String? = nil,
         fingerprint: String? = nil,
         importedAt: Date? = Date(),
-        shelf: String? = nil
+        shelf: String? = nil,
+        publisher: String? = nil,
+        publishYear: Int? = nil,
+        language: String? = nil,
+        isbn: String? = nil,
+        description: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -49,6 +59,11 @@ struct Book: Identifiable, Codable {
         self.fingerprint = fingerprint
         self.importedAt = importedAt
         self.shelf = shelf
+        self.publisher = publisher
+        self.publishYear = publishYear
+        self.language = language
+        self.isbn = isbn
+        self.description = description
     }
 
     var bookFormat: BookFormat {
@@ -64,7 +79,16 @@ struct Book: Identifiable, Codable {
         return value.isEmpty ? nil : value
     }
 
-    func updatingMetadata(title: String, author: String, shelf: String?) -> Book {
+    func updatingMetadata(
+        title: String,
+        author: String,
+        shelf: String?,
+        publisher: String? = nil,
+        publishYear: Int? = nil,
+        language: String? = nil,
+        isbn: String? = nil,
+        description: String? = nil
+    ) -> Book {
         Book(
             id: id,
             title: title,
@@ -78,7 +102,12 @@ struct Book: Identifiable, Codable {
             coverFileName: coverFileName,
             fingerprint: fingerprint,
             importedAt: importedAt,
-            shelf: shelf
+            shelf: shelf,
+            publisher: publisher,
+            publishYear: publishYear,
+            language: language,
+            isbn: isbn,
+            description: description
         )
     }
 
@@ -96,7 +125,12 @@ struct Book: Identifiable, Codable {
             coverFileName: fileName,
             fingerprint: fingerprint,
             importedAt: importedAt,
-            shelf: shelf
+            shelf: shelf,
+            publisher: publisher,
+            publishYear: publishYear,
+            language: language,
+            isbn: isbn,
+            description: description
         )
     }
 
@@ -114,7 +148,12 @@ struct Book: Identifiable, Codable {
             coverFileName: coverFileName,
             fingerprint: value,
             importedAt: importedAt,
-            shelf: shelf
+            shelf: shelf,
+            publisher: publisher,
+            publishYear: publishYear,
+            language: language,
+            isbn: isbn,
+            description: description
         )
     }
 }
