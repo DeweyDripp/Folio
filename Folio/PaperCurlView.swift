@@ -7,7 +7,9 @@ final class PaperCurlView: UIView {
     private let turnsLeft: Bool
     private var strips: [CALayer] = []
     private var backs: [CALayer] = []
-    private let stripCount = 96
+    // Fewer strips keep interactive page turns smooth on older devices while
+    // preserving the curved-paper appearance.
+    private let stripCount = 48
     private var displayLink: CADisplayLink?
     private var startTime: CFTimeInterval = 0
     private var startProgress: CGFloat = 0

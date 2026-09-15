@@ -2,11 +2,11 @@ import Foundation
 import UIKit
 
 enum ImportedBookStore {
-    private static let libraryFileName = "ImportedBooks.json"
+    nonisolated private static let libraryFileName = "ImportedBooks.json"
     private static let coverCache = NSCache<NSString, NSData>()
     private static let imageCache = NSCache<NSString, UIImage>()
 
-    static func load() throws -> [Book] {
+    nonisolated static func load() throws -> [Book] {
         guard FileManager.default.fileExists(atPath: libraryURL.path) else {
             return []
         }
@@ -54,7 +54,7 @@ enum ImportedBookStore {
         return books
     }
 
-    static func save(_ books: [Book]) throws {
+    nonisolated static func save(_ books: [Book]) throws {
         let data = try JSONEncoder().encode(books)
         if FileManager.default.fileExists(atPath: libraryURL.path) {
             let currentData = try Data(contentsOf: libraryURL)
@@ -103,23 +103,23 @@ enum ImportedBookStore {
         return data
     }
 
-    static var booksDirectory: URL {
+    nonisolated static var booksDirectory: URL {
         directory(named: "Books")
     }
 
-    static var coversDirectory: URL {
+    nonisolated static var coversDirectory: URL {
         directory(named: "Covers")
     }
 
-    private static var libraryURL: URL {
+    nonisolated private static var libraryURL: URL {
         URL.documentsDirectory.appending(path: libraryFileName)
     }
 
-    private static var backupURL: URL {
+    nonisolated private static var backupURL: URL {
         URL.documentsDirectory.appending(path: "ImportedBooks.backup.json")
     }
 
-    private static func directory(named name: String) -> URL {
+    nonisolated private static func directory(named name: String) -> URL {
         let url = URL.documentsDirectory.appending(path: name, directoryHint: .isDirectory)
         do {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -129,7 +129,7 @@ enum ImportedBookStore {
         return url
     }
 
-    private static func removeIfPresent(_ url: URL) throws {
+    nonisolated private static func removeIfPresent(_ url: URL) throws {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         try FileManager.default.removeItem(at: url)
     }

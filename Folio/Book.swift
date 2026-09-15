@@ -26,7 +26,7 @@ struct Book: Identifiable, Codable {
     let isbn: String?
     let description: String?
 
-    init(
+    nonisolated init(
         id: UUID = UUID(),
         title: String,
         author: String,
@@ -111,7 +111,7 @@ struct Book: Identifiable, Codable {
         )
     }
 
-    func storingCover(in fileName: String) -> Book {
+    nonisolated func storingCover(in fileName: String) -> Book {
         Book(
             id: id,
             title: title,
@@ -134,7 +134,7 @@ struct Book: Identifiable, Codable {
         )
     }
 
-    func storingFingerprint(_ value: String) -> Book {
+    nonisolated func storingFingerprint(_ value: String) -> Book {
         Book(
             id: id,
             title: title,

@@ -65,6 +65,7 @@ struct ReaderView: View {
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
         }
+        .background(NavigationBackGestureDisabler())
     }
 
     private var landscapeHeader: some View {
@@ -109,6 +110,23 @@ struct ReaderView: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 8)
         .background(.clear)
+    }
+}
+
+private struct NavigationBackGestureDisabler: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ controller: Controller, context: Context) { }
+
+    final class Controller: UIViewController {
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+            super.viewWillDisappear(animated)
+        }
     }
 }
 

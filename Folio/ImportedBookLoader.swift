@@ -5,7 +5,7 @@ import ReadiumShared
 import UIKit
 
 enum ImportedBookLoader {
-    static func fingerprint(for url: URL) throws -> String {
+    nonisolated static func fingerprint(for url: URL) throws -> String {
         let hasAccess = url.startAccessingSecurityScopedResource()
         defer {
             if hasAccess { url.stopAccessingSecurityScopedResource() }
@@ -81,9 +81,15 @@ enum ImportedBookLoader {
             throw ImportError.unreadableFile
         }
 
-        let pages = (0..<document.pageCount)
-            .compactMap { document.page(at: $0)?.string?.trimmedForReading }
-            .filter { !$0.isEmpty }
+        var pages: [String] = []
+        pages.reserveCapacity(document.pageCount)
+        for index in 0..<document.pageCount {
+            autoreleasepool {
+                if let text = document.page(at: index)?.string?.trimmedForReading, !text.isEmpty {
+                    pages.append(text)
+                }
+            }
+        }
 
         guard !pages.isEmpty else {
             throw ImportError.noReadableText
@@ -119,7 +125,7 @@ enum ImportedBookLoader {
         )
     }
 
-    private static func fileFingerprint(for url: URL) throws -> String {
+    nonisolated private static func fileFingerprint(for url: URL) throws -> String {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
 

@@ -7,6 +7,8 @@ struct LibraryView: View {
     @State private var importedBooks: [Book] = []
     @State private var isLoadingLibrary = true
     @State private var isShowingImporter = false
+    @State private var isShowingAudiobookImporter = false
+    @State private var audiobooks: [Audiobook] = []
     @State private var isImporting = false
     @State private var presentedError: LibraryError?
     @State private var bookToEdit: Book?
@@ -148,10 +150,20 @@ struct LibraryView: View {
                         Label("Organize Library", systemImage: "arrow.up.arrow.down.circle")
                     }
 
-                    Button {
-                        isShowingImporter = true
+                    NavigationLink {
+                        AudiobooksLibraryView(audiobooks: audiobooks)
                     } label: {
-                        Label("Import Book", systemImage: "plus")
+                        Label("Audiobooks", systemImage: "headphones")
+                    }
+                    Menu {
+                        Button { isShowingImporter = true } label: {
+                            Label("Book", systemImage: "book")
+                        }
+                        Button { isShowingAudiobookImporter = true } label: {
+                            Label("Audiobook", systemImage: "headphones")
+                        }
+                    } label: {
+                        Label("Import", systemImage: "plus")
                     }
                 }
             }
@@ -162,6 +174,9 @@ struct LibraryView: View {
                 Task {
                     await importBook(from: result)
                 }
+            }
+            .fileImporter(isPresented: $isShowingAudiobookImporter, allowedContentTypes: [.audio, .folder], allowsMultipleSelection: true) { result in
+                Task { await importAudiobook(from: result) }
             }
             .searchable(text: $searchText, prompt: "Search titles and authors")
             .sheet(item: $bookToEdit) { book in
@@ -198,6 +213,7 @@ struct LibraryView: View {
             }
             .task {
                 loadLibrary()
+                audiobooks = (try? AudiobookStore.load()) ?? []
                 if let message = readingProgress.errorMessage {
                     presentedError = LibraryError(title: "Couldn’t Load Progress", message: message)
                     readingProgress.clearError()
@@ -324,7 +340,9 @@ struct LibraryView: View {
         isLoadingLibrary = true
         Task {
             do {
-                let books = try ImportedBookStore.load()
+                let books = try await Task.detached(priority: .userInitiated) {
+                    try ImportedBookStore.load()
+                }.value
                 importedBooks = books
             } catch {
                 presentedError = LibraryError(
@@ -334,6 +352,30 @@ struct LibraryView: View {
             }
             isLoadingLibrary = false
         }
+    }
+
+    private func importAudiobook(from result: Result<[URL], Error>) async {
+        do {
+            let selected = try result.get()
+            let expanded = selected.flatMap { url -> [URL] in
+                if url.hasDirectoryPath {
+                    return (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)) ?? []
+                }
+                return [url]
+            }
+            let urls = expanded.filter { ["mp3", "m4a", "aac", "wav"].contains($0.pathExtension.lowercased()) }
+                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+            guard !urls.isEmpty else { return }
+            let id = UUID()
+            var chapters: [AudiobookChapter] = []
+            for (index, url) in urls.enumerated() {
+                let name = "\(id.uuidString)-\(index).\(url.pathExtension)"
+                try FileManager.default.copyItem(at: url, to: AudiobookStore.audioDirectory.appending(path: name))
+                chapters.append(AudiobookChapter(id: UUID(), title: url.deletingPathExtension().lastPathComponent, fileName: name))
+            }
+            let audiobook = Audiobook(id: id, title: urls.first!.deletingLastPathComponent().lastPathComponent, author: "Audiobook", chapters: chapters, importedAt: Date())
+            var updated = audiobooks; updated.insert(audiobook, at: 0); try AudiobookStore.save(updated); audiobooks = updated
+        } catch { presentedError = LibraryError(title: "Couldn’t Import Audiobook", message: error.localizedDescription) }
     }
 
     private func showStorageError() {
