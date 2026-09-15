@@ -32,6 +32,11 @@ final class ReaderBookmarkStore: ObservableObject {
         defaults.removeObject(forKey: "reader-bookmarks-\(bookID.uuidString)")
     }
 
+    static func restore(_ saved: [ReaderBookmark], for bookID: UUID, defaults: UserDefaults = .standard) {
+        guard let data = try? JSONEncoder().encode(saved) else { return }
+        defaults.set(data, forKey: "reader-bookmarks-\(bookID.uuidString)")
+    }
+
     func containsPage(_ pageIndex: Int) -> Bool {
         bookmarks.contains { $0.pageIndex == pageIndex }
     }

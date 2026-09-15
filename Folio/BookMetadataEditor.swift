@@ -15,6 +15,8 @@ struct BookMetadataEditor: View {
     @State private var description: String
     @State private var isLookingUp = false
     @State private var lookupMessage: String?
+    @State private var suggestions: [OpenLibraryMetadata] = []
+    @State private var showsSuggestions = false
 
     init(book: Book, save: @escaping (Book) -> Void) {
         self.book = book
@@ -32,7 +34,15 @@ struct BookMetadataEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Book Details") {
+                Section {
+                    Text("Edit these fields manually, or use Open Library below to find matching editions.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("Book Details")
+                }
+
+                Section {
                     TextField("Title", text: $title)
                         .textInputAutocapitalization(.words)
 
@@ -85,7 +95,7 @@ struct BookMetadataEditor: View {
                 } header: {
                     Text("Open Library")
                 } footer: {
-                    Text("Folio searches Open Library one book at a time. Review the fields before saving.")
+                    Text("Folio searches Open Library and shows several matches. Choose the right edition, then review the fields before saving.")
                 }
 
                 Section("File Information") {
@@ -127,6 +137,12 @@ struct BookMetadataEditor: View {
                 }
             }
         }
+        .sheet(isPresented: $showsSuggestions) {
+            OpenLibraryMatchPicker(matches: suggestions) { match in
+                apply(match)
+                showsSuggestions = false
+            }
+        }
     }
 
     private func lookupMetadata() {
@@ -135,22 +151,18 @@ struct BookMetadataEditor: View {
 
         Task {
             do {
-                let suggestion = try await OpenLibraryService.lookup(
+                let matches = try await OpenLibraryService.search(
                     title: title,
                     author: author,
                     isbn: isbn
                 )
                 await MainActor.run {
-                    if let suggestion {
-                        title = suggestion.title ?? title
-                        author = suggestion.author ?? author
-                        publisher = suggestion.publisher ?? publisher
-                        if let year = suggestion.publishYear { publishYear = String(year) }
-                        language = suggestion.language ?? language
-                        isbn = suggestion.isbn ?? isbn
-                        lookupMessage = "Metadata found. Review it before saving."
-                    } else {
+                    if matches.isEmpty {
                         lookupMessage = "No matching book was found. Try adding an ISBN."
+                    } else {
+                        suggestions = matches
+                        lookupMessage = "Choose the matching edition."
+                        showsSuggestions = true
                     }
                     isLookingUp = false
                 }
@@ -163,9 +175,55 @@ struct BookMetadataEditor: View {
         }
     }
 
+    private func apply(_ match: OpenLibraryMetadata) {
+        title = match.title ?? title
+        author = match.author ?? author
+        publisher = match.publisher ?? publisher
+        if let year = match.publishYear { publishYear = String(year) }
+        language = match.language ?? language
+        isbn = match.isbn ?? isbn
+    }
+
     private func cleanOptional(_ value: String) -> String? {
         let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return clean.isEmpty ? nil : clean
+    }
+}
+
+private struct OpenLibraryMatchPicker: View {
+    let matches: [OpenLibraryMetadata]
+    let select: (OpenLibraryMetadata) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List(matches) { match in
+                Button {
+                    select(match)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(match.title ?? "Untitled")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text(match.author ?? "Unknown author")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Text([match.publisher, match.publishYear.map(String.init), match.isbn].compactMap { $0 }.joined(separator: " • "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .buttonStyle(.plain)
+            }
+            .navigationTitle("Choose Edition")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
     }
 }
 

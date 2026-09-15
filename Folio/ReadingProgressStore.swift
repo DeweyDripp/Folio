@@ -89,6 +89,11 @@ final class ReadingProgressStore: ObservableObject {
         errorMessage = nil
     }
 
+    func restore(_ saved: [ReadingProgress]) {
+        for progress in saved { entries[progress.bookID] = progress }
+        persist()
+    }
+
     private func load() {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
 

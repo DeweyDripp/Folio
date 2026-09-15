@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ReaderView: View {
     let book: Book
@@ -56,6 +57,13 @@ struct ReaderView: View {
         }
         .onAppear {
             ReadingProgressStore.shared.markOpened(book.id)
+            UIApplication.shared.isIdleTimerDisabled = settings.keepsScreenAwake
+        }
+        .onChange(of: settings.keepsScreenAwake) { _, keepsAwake in
+            UIApplication.shared.isIdleTimerDisabled = keepsAwake
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
         }
     }
 

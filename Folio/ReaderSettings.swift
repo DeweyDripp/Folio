@@ -106,6 +106,8 @@ final class ReaderSettings: ObservableObject {
     @Published var progressDisplay: ReaderProgressDisplay { didSet { save() } }
     @Published var usesPageTurnAnimation: Bool { didSet { save() } }
     @Published var usesPublisherStyles: Bool { didSet { save() } }
+    @Published var keepsScreenAwake: Bool { didSet { save() } }
+    @Published var usesPageTurnHaptics: Bool { didSet { save() } }
 
     private let defaults = UserDefaults.standard
 
@@ -122,6 +124,8 @@ final class ReaderSettings: ObservableObject {
         ) ?? .book
         usesPageTurnAnimation = defaults.object(forKey: Key.pageTurnAnimation) as? Bool ?? true
         usesPublisherStyles = defaults.object(forKey: Key.publisherStyles) as? Bool ?? true
+        keepsScreenAwake = defaults.object(forKey: Key.keepAwake) as? Bool ?? false
+        usesPageTurnHaptics = defaults.object(forKey: Key.pageTurnHaptics) as? Bool ?? true
     }
 
     func reset() {
@@ -135,6 +139,8 @@ final class ReaderSettings: ObservableObject {
         progressDisplay = .book
         usesPageTurnAnimation = true
         usesPublisherStyles = true
+        keepsScreenAwake = false
+        usesPageTurnHaptics = true
     }
 
     private func save() {
@@ -148,6 +154,8 @@ final class ReaderSettings: ObservableObject {
         defaults.set(progressDisplay.rawValue, forKey: Key.progressDisplay)
         defaults.set(usesPageTurnAnimation, forKey: Key.pageTurnAnimation)
         defaults.set(usesPublisherStyles, forKey: Key.publisherStyles)
+        defaults.set(keepsScreenAwake, forKey: Key.keepAwake)
+        defaults.set(usesPageTurnHaptics, forKey: Key.pageTurnHaptics)
     }
 
     private enum Key {
@@ -161,6 +169,8 @@ final class ReaderSettings: ObservableObject {
         static let progressDisplay = "reader-progress-display"
         static let pageTurnAnimation = "reader-page-turn-animation"
         static let publisherStyles = "reader-publisher-styles"
+        static let keepAwake = "reader-keep-awake"
+        static let pageTurnHaptics = "reader-page-turn-haptics"
     }
 
     var fontIdentifier: String {

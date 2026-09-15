@@ -39,6 +39,11 @@ final class ReaderHighlightStore: ObservableObject {
         defaults.removeObject(forKey: "reader-highlights-\(bookID.uuidString)")
     }
 
+    static func restore(_ saved: [ReaderHighlight], for bookID: UUID, defaults: UserDefaults = .standard) {
+        guard let data = try? JSONEncoder().encode(saved) else { return }
+        defaults.set(data, forKey: "reader-highlights-\(bookID.uuidString)")
+    }
+
     func add(locatorJSON: String, text: String, progression: Double?) {
         guard !highlights.contains(where: { $0.locatorJSON == locatorJSON }) else { return }
 

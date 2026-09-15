@@ -1,6 +1,7 @@
 import Foundation
 
-struct OpenLibraryMetadata {
+struct OpenLibraryMetadata: Identifiable {
+    let id = UUID()
     let title: String?
     let author: String?
     let publisher: String?
@@ -12,11 +13,11 @@ struct OpenLibraryMetadata {
 enum OpenLibraryService {
     private static let endpoint = URL(string: "https://openlibrary.org/search.json")!
 
-    static func lookup(title: String, author: String, isbn: String) async throws -> OpenLibraryMetadata? {
+    static func search(title: String, author: String, isbn: String) async throws -> [OpenLibraryMetadata] {
         let cleanISBN = isbn.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanAuthor = author.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanISBN.isEmpty || !cleanTitle.isEmpty else { return nil }
+        guard !cleanISBN.isEmpty || !cleanTitle.isEmpty else { return [] }
 
         var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
         let query: String
@@ -29,7 +30,7 @@ enum OpenLibraryService {
         }
         components.queryItems = [
             URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "limit", value: "1"),
+            URLQueryItem(name: "limit", value: "8"),
             URLQueryItem(
                 name: "fields",
                 value: "title,author_name,publisher,first_publish_year,language,isbn"
@@ -44,16 +45,16 @@ enum OpenLibraryService {
         }
 
         let result = try JSONDecoder().decode(SearchResponse.self, from: data)
-        guard let match = result.docs.first else { return nil }
-
-        return OpenLibraryMetadata(
-            title: match.title,
-            author: match.authorNames?.first,
-            publisher: match.publishers?.first,
-            publishYear: match.firstPublishYear,
-            language: match.languages?.first.map(languageName),
-            isbn: preferredISBN(from: match.isbns)
-        )
+        return result.docs.map { match in
+            OpenLibraryMetadata(
+                title: match.title,
+                author: match.authorNames?.first,
+                publisher: match.publishers?.first,
+                publishYear: match.firstPublishYear,
+                language: match.languages?.first.map(languageName),
+                isbn: preferredISBN(from: match.isbns)
+            )
+        }
     }
 
     private static func preferredISBN(from values: [String]?) -> String? {

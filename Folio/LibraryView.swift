@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct LibraryView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ObservedObject private var readingProgress = ReadingProgressStore.shared
     @State private var importedBooks: [Book] = []
     @State private var isLoadingLibrary = true
@@ -13,12 +14,54 @@ struct LibraryView: View {
     @State private var searchText = ""
     @State private var selectedShelf = "__all_shelves__"
     @AppStorage("library-sort") private var sortRawValue = LibrarySortOption.recent.rawValue
+    @AppStorage("library-show-progress") private var showProgress = true
 
-    private let columns = [
-        GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 24)
-    ]
+    @AppStorage("library-grid-size") private var gridSize = 0.0
+
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: 140 + gridSize * 70, maximum: 230), spacing: 24)]
+    }
 
     var body: some View {
+        if horizontalSizeClass == .regular {
+            iPadLayout
+        } else {
+            phoneLayout
+        }
+    }
+
+    private var iPadLayout: some View {
+        NavigationSplitView {
+            List {
+                Section("Folio") {
+                    NavigationLink {
+                        phoneLayout
+                    } label: {
+                        Label("Library", systemImage: "books.vertical")
+                    }
+                }
+                Section {
+                    NavigationLink {
+                        AppSettingsView(books: importedBooks)
+                    } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                    NavigationLink {
+                        LibraryInsightsView(books: importedBooks)
+                    } label: {
+                        Label("Insights", systemImage: "chart.bar.xaxis")
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+            .navigationTitle("Folio")
+        } detail: {
+            phoneLayout
+        }
+        .navigationSplitViewStyle(.balanced)
+    }
+
+    private var phoneLayout: some View {
         NavigationStack {
             Group {
                 if isLoadingLibrary {
@@ -40,7 +83,7 @@ struct LibraryView: View {
                                 } label: {
                                     BookCoverView(
                                         book: book,
-                                        progress: readingProgress.progress(for: book.id)
+                                        progress: showProgress ? readingProgress.progress(for: book.id) : nil
                                     )
                                 }
                                 .buttonStyle(.plain)
@@ -68,7 +111,7 @@ struct LibraryView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     NavigationLink {
-                        AppSettingsView()
+                        AppSettingsView(books: importedBooks)
                     } label: {
                         Label("Settings", systemImage: "gearshape")
                     }
@@ -164,6 +207,9 @@ struct LibraryView: View {
                 guard let message else { return }
                 presentedError = LibraryError(title: "Couldn’t Save Progress", message: message)
                 readingProgress.clearError()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .folioLibraryDidChange)) { _ in
+                loadLibrary()
             }
         }
     }

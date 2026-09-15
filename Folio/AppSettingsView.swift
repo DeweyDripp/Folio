@@ -6,6 +6,17 @@ struct AppSettingsView: View {
     @ObservedObject private var customFonts = CustomFontStore.shared
     @State private var showsFontImporter = false
     @State private var fontImportError: String?
+    @AppStorage("library-sort") private var librarySort = LibrarySortOption.recent.rawValue
+    @AppStorage("library-show-progress") private var showProgress = true
+    @AppStorage("library-grid-size") private var gridSize = 0.0
+    @AppStorage("metadata-auto-suggest") private var metadataAutoSuggest = false
+    let books: [Book]
+    @State private var backupURL: URL?
+    @State private var backupError: String?
+    @State private var backupDocument: FolioBackupDocument?
+    @State private var showsBackupImporter = false
+
+    init(books: [Book] = []) { self.books = books }
 
     var body: some View {
         Form {
@@ -50,6 +61,47 @@ struct AppSettingsView: View {
                 Text("Import OpenType or TrueType fonts you have permission to use.")
             }
 
+            Section("Library") {
+                Picker("Default sort", selection: $librarySort) {
+                    ForEach(LibrarySortOption.allCases) { option in
+                        Text(option.title).tag(option.rawValue)
+                    }
+                }
+                Toggle("Show progress on book covers", isOn: $showProgress)
+                HStack {
+                    Text("Book size")
+                    Slider(value: $gridSize, in: 0...1)
+                }
+            }
+
+            Section("Reader Behavior") {
+                Toggle("Keep screen awake while reading", isOn: $readerSettings.keepsScreenAwake)
+                Toggle("Page-turn haptics", isOn: $readerSettings.usesPageTurnHaptics)
+            }
+
+            Section("Metadata") {
+                Toggle("Suggest metadata after importing", isOn: $metadataAutoSuggest)
+                Text("Folio will still ask you to choose the matching Open Library edition.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Backup") {
+                Button {
+                    do {
+                        let url = try FolioBackupService.makeBackup(books: books)
+                        backupDocument = FolioBackupDocument(data: try Data(contentsOf: url))
+                    } catch { backupError = error.localizedDescription }
+                } label: {
+                    Label("Export Library Backup", systemImage: "square.and.arrow.up")
+                }
+                Button { showsBackupImporter = true } label: {
+                    Label("Import Library Backup", systemImage: "square.and.arrow.down")
+                }
+                Text("Includes books, metadata, reading progress, bookmarks, and highlights. Save it to Files or AirDrop it to another device.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+
             Section("About") {
                 LabeledContent("App", value: "Folio")
                 LabeledContent("Reader", value: "Readium")
@@ -71,6 +123,26 @@ struct AppSettingsView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(fontImportError ?? "Please try another font file.")
+        }
+        .alert("Couldn’t Create Backup", isPresented: Binding(get: { backupError != nil }, set: { if !$0 { backupError = nil } })) {
+            Button("OK", role: .cancel) { }
+        } message: { Text(backupError ?? "Please try again.") }
+        .fileExporter(
+            isPresented: Binding(get: { backupDocument != nil }, set: { if !$0 { backupDocument = nil } }),
+            document: backupDocument,
+            contentType: .json,
+            defaultFilename: "Folio-Backup.json"
+        ) { result in
+            if case .failure(let error) = result { backupError = error.localizedDescription }
+            backupDocument = nil
+        }
+        .fileImporter(isPresented: $showsBackupImporter, allowedContentTypes: [.json]) { result in
+            do {
+                let url = try result.get()
+                guard url.startAccessingSecurityScopedResource() else { throw CocoaError(.fileReadNoPermission) }
+                defer { url.stopAccessingSecurityScopedResource() }
+                try FolioBackupService.restore(from: Data(contentsOf: url))
+            } catch { backupError = error.localizedDescription }
         }
     }
 
