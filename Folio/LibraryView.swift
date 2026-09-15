@@ -321,14 +321,18 @@ struct LibraryView: View {
     }
 
     private func loadLibrary() {
-        defer { isLoadingLibrary = false }
-        do {
-            importedBooks = try ImportedBookStore.load()
-        } catch {
-            presentedError = LibraryError(
-                title: "Couldn’t Load Library",
-                message: "Folio couldn’t read its library information. Your imported book files have not been deleted."
-            )
+        isLoadingLibrary = true
+        Task {
+            do {
+                let books = try ImportedBookStore.load()
+                importedBooks = books
+            } catch {
+                presentedError = LibraryError(
+                    title: "Couldn’t Load Library",
+                    message: "Folio couldn’t read its library information. Your imported book files have not been deleted."
+                )
+            }
+            isLoadingLibrary = false
         }
     }
 

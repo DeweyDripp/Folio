@@ -1,9 +1,11 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct LibraryInsightsView: View {
     let books: [Book]
 
     @State private var selectedTab: InsightsTab = .notes
+    @State private var notesDocument: ReadingNotesDocument?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,6 +28,26 @@ struct LibraryInsightsView: View {
         }
         .navigationTitle("Insights")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if selectedTab == .notes {
+                Button {
+                    notesDocument = ReadingNotesDocument(text: exportText)
+                } label: {
+                    Label("Export Notes", systemImage: "square.and.arrow.up")
+                }
+            }
+        }
+        .fileExporter(isPresented: Binding(get: { notesDocument != nil }, set: { if !$0 { notesDocument = nil } }), document: notesDocument, contentType: .plainText, defaultFilename: "Folio-Highlights.txt") { _ in
+            notesDocument = nil
+        }
+    }
+
+    private var exportText: String {
+        books.flatMap { book in
+            ReaderHighlightStore(bookID: book.id).highlights.map { highlight in
+                "# \(book.title)\n\n\"\(highlight.text)\"\n\n\(highlight.note)\n"
+            }
+        }.joined(separator: "\n---\n\n")
     }
 }
 

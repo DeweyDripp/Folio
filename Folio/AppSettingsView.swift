@@ -11,10 +11,11 @@ struct AppSettingsView: View {
     @AppStorage("library-grid-size") private var gridSize = 0.0
     @AppStorage("metadata-auto-suggest") private var metadataAutoSuggest = false
     let books: [Book]
-    @State private var backupURL: URL?
     @State private var backupError: String?
     @State private var backupDocument: FolioBackupDocument?
     @State private var showsBackupImporter = false
+    @State private var pendingBackupData: Data?
+    @State private var showsRestoreConfirmation = false
 
     init(books: [Book] = []) { self.books = books }
 
@@ -141,8 +142,19 @@ struct AppSettingsView: View {
                 let url = try result.get()
                 guard url.startAccessingSecurityScopedResource() else { throw CocoaError(.fileReadNoPermission) }
                 defer { url.stopAccessingSecurityScopedResource() }
-                try FolioBackupService.restore(from: Data(contentsOf: url))
+                pendingBackupData = try Data(contentsOf: url)
+                showsRestoreConfirmation = true
             } catch { backupError = error.localizedDescription }
+        }
+        .confirmationDialog("Restore Folio Backup?", isPresented: $showsRestoreConfirmation, titleVisibility: .visible) {
+            Button("Restore and Replace Library", role: .destructive) {
+                do { if let data = pendingBackupData { try FolioBackupService.restore(from: data) } }
+                catch { backupError = error.localizedDescription }
+                pendingBackupData = nil
+            }
+            Button("Cancel", role: .cancel) { pendingBackupData = nil }
+        } message: {
+            Text("This replaces the current library metadata and reading data. Your original book files are not deleted.")
         }
     }
 

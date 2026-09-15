@@ -15,7 +15,7 @@ struct BookCoverView: View {
                 .fill(coverColor.gradient)
                 .aspectRatio(0.68, contentMode: .fit)
                 .overlay {
-                    coverArtwork
+                coverArtwork
                 }
                 .shadow(color: .black.opacity(0.18), radius: 8, y: 5)
 
@@ -42,7 +42,7 @@ struct BookCoverView: View {
 
     @ViewBuilder
     private var coverArtwork: some View {
-        if let data = ImportedBookStore.coverData(for: book), let image = UIImage(data: data) {
+        if let image = ImportedBookStore.coverImage(for: book) {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFill()
