@@ -10,6 +10,9 @@ import SwiftUI
 struct ContentView: View {
     var body: some View {
         LibraryView()
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                MiniAudiobookPlayer()
+            }
     }
 }
 

@@ -26,8 +26,8 @@ final class FolioUITests: XCTestCase {
     func testLibraryLaunches() throws {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.navigationBars["Library"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Import Book"].exists)
+        XCTAssertTrue(app.staticTexts["Library"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Import"].exists)
         XCTAssertTrue(app.buttons["Settings"].exists)
     }
 

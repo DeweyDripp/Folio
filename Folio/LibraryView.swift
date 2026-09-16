@@ -1,4 +1,7 @@
 import SwiftUI
+import AVFoundation
+import CryptoKit
+import UIKit
 import UniformTypeIdentifiers
 
 struct LibraryView: View {
@@ -25,7 +28,7 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        if horizontalSizeClass == .regular {
+        if UIDevice.current.userInterfaceIdiom == .pad {
             iPadLayout
         } else {
             phoneLayout
@@ -357,6 +360,12 @@ struct LibraryView: View {
     private func importAudiobook(from result: Result<[URL], Error>) async {
         do {
             let selected = try result.get()
+            let accessStates = selected.map { ($0, $0.startAccessingSecurityScopedResource()) }
+            defer {
+                for (url, didStart) in accessStates where didStart {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
             let expanded = selected.flatMap { url -> [URL] in
                 if url.hasDirectoryPath {
                     return (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)) ?? []
@@ -369,11 +378,24 @@ struct LibraryView: View {
             let id = UUID()
             var chapters: [AudiobookChapter] = []
             for (index, url) in urls.enumerated() {
+                let didStart = url.startAccessingSecurityScopedResource()
+                defer { if didStart { url.stopAccessingSecurityScopedResource() } }
                 let name = "\(id.uuidString)-\(index).\(url.pathExtension)"
+                let asset = AVURLAsset(url: url)
+                let seconds = try? await asset.load(.duration).seconds
+                let duration = seconds.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+                let fingerprint = SHA256.hash(data: try Data(contentsOf: url)).map { String(format: "%02x", $0) }.joined()
+                if audiobooks.flatMap(\.chapters).contains(where: { $0.fingerprint == fingerprint }) { throw DuplicateBookError() }
                 try FileManager.default.copyItem(at: url, to: AudiobookStore.audioDirectory.appending(path: name))
-                chapters.append(AudiobookChapter(id: UUID(), title: url.deletingPathExtension().lastPathComponent, fileName: name))
+                chapters.append(AudiobookChapter(id: UUID(), title: url.deletingPathExtension().lastPathComponent, fileName: name, duration: duration, fingerprint: fingerprint))
             }
-            let audiobook = Audiobook(id: id, title: urls.first!.deletingLastPathComponent().lastPathComponent, author: "Audiobook", chapters: chapters, importedAt: Date())
+            let asset = AVURLAsset(url: urls[0])
+            let metadata = (try? await asset.load(.commonMetadata)) ?? []
+            var artwork: Data?
+            if let item = metadata.first(where: { $0.commonKey?.rawValue == "artwork" }) {
+                artwork = try? await item.load(.dataValue)
+            }
+            let audiobook = Audiobook(id: id, title: urls.first!.deletingLastPathComponent().lastPathComponent, author: "Audiobook", chapters: chapters, importedAt: Date(), coverData: artwork)
             var updated = audiobooks; updated.insert(audiobook, at: 0); try AudiobookStore.save(updated); audiobooks = updated
         } catch { presentedError = LibraryError(title: "Couldn’t Import Audiobook", message: error.localizedDescription) }
     }
