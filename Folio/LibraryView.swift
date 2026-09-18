@@ -320,7 +320,7 @@ struct LibraryView: View {
         do {
             let url = try result.get()
             let fingerprint = try ImportedBookLoader.fingerprint(for: url)
-            guard !importedBooks.contains(where: { $0.fingerprint == fingerprint }) else {
+            guard !LibraryImportValidator.containsDuplicateBook(fingerprint: fingerprint, in: importedBooks) else {
                 throw DuplicateBookError()
             }
 
@@ -358,6 +358,7 @@ struct LibraryView: View {
     }
 
     private func importAudiobook(from result: Result<[URL], Error>) async {
+        var copiedFileNames: [String] = []
         do {
             let selected = try result.get()
             let accessStates = selected.map { ($0, $0.startAccessingSecurityScopedResource()) }
@@ -377,6 +378,7 @@ struct LibraryView: View {
             guard !urls.isEmpty else { return }
             let id = UUID()
             var chapters: [AudiobookChapter] = []
+            var seenFingerprints = LibraryImportValidator.existingAudiobookFingerprints(in: audiobooks)
             for (index, url) in urls.enumerated() {
                 let didStart = url.startAccessingSecurityScopedResource()
                 defer { if didStart { url.stopAccessingSecurityScopedResource() } }
@@ -385,8 +387,11 @@ struct LibraryView: View {
                 let seconds = try? await asset.load(.duration).seconds
                 let duration = seconds.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
                 let fingerprint = SHA256.hash(data: try Data(contentsOf: url)).map { String(format: "%02x", $0) }.joined()
-                if audiobooks.flatMap(\.chapters).contains(where: { $0.fingerprint == fingerprint }) { throw DuplicateBookError() }
+                guard LibraryImportValidator.canInsertAudiobookFingerprint(fingerprint, into: &seenFingerprints) else {
+                    throw DuplicateBookError()
+                }
                 try FileManager.default.copyItem(at: url, to: AudiobookStore.audioDirectory.appending(path: name))
+                copiedFileNames.append(name)
                 chapters.append(AudiobookChapter(id: UUID(), title: url.deletingPathExtension().lastPathComponent, fileName: name, duration: duration, fingerprint: fingerprint))
             }
             let asset = AVURLAsset(url: urls[0])
@@ -397,7 +402,12 @@ struct LibraryView: View {
             }
             let audiobook = Audiobook(id: id, title: urls.first!.deletingLastPathComponent().lastPathComponent, author: "Audiobook", chapters: chapters, importedAt: Date(), coverData: artwork)
             var updated = audiobooks; updated.insert(audiobook, at: 0); try AudiobookStore.save(updated); audiobooks = updated
-        } catch { presentedError = LibraryError(title: "Couldn’t Import Audiobook", message: error.localizedDescription) }
+        } catch {
+            for fileName in copiedFileNames {
+                try? FileManager.default.removeItem(at: AudiobookStore.audioDirectory.appending(path: fileName))
+            }
+            presentedError = LibraryError(title: "Couldn’t Import Audiobook", message: error.localizedDescription)
+        }
     }
 
     private func showStorageError() {

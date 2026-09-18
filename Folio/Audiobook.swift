@@ -80,6 +80,35 @@ enum AudiobookStore {
         }
     }
 
+    static func isFavorite(_ audiobookID: UUID) -> Bool {
+        UserDefaults.standard.bool(forKey: "audiobook-\(audiobookID.uuidString)-favorite")
+    }
+
+    static func setFavorite(_ favorite: Bool, for audiobookID: UUID) {
+        UserDefaults.standard.set(favorite, forKey: "audiobook-\(audiobookID.uuidString)-favorite")
+    }
+
+    static func shelf(for audiobookID: UUID) -> String? {
+        UserDefaults.standard.string(forKey: "audiobook-\(audiobookID.uuidString)-shelf")
+    }
+
+    static func setShelf(_ shelf: String?, for audiobookID: UUID) {
+        let key = "audiobook-\(audiobookID.uuidString)-shelf"
+        if let shelf, !shelf.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            UserDefaults.standard.set(shelf, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+
+    static func markPlayed(_ audiobookID: UUID) {
+        UserDefaults.standard.set(Date(), forKey: "audiobook-\(audiobookID.uuidString)-last-played")
+    }
+
+    static func lastPlayed(_ audiobookID: UUID) -> Date? {
+        UserDefaults.standard.object(forKey: "audiobook-\(audiobookID.uuidString)-last-played") as? Date
+    }
+
     private static func duration(for chapter: AudiobookChapter) -> TimeInterval? {
         if let duration = chapter.duration { return duration }
         let url = audioDirectory.appending(path: chapter.fileName)

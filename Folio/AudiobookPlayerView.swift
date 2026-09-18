@@ -133,6 +133,7 @@ struct AudiobookPlayerView: View {
     }
 
     func activate(_ player: AudiobookPlayerModel) {
+        AudiobookStore.markPlayed(player.audiobook.id)
         guard currentPlayer !== player else { return }
         if currentPlayer?.audiobook.id != player.audiobook.id {
             currentPlayer?.stop()
@@ -281,7 +282,11 @@ private struct BookmarkEditor: View {
         self.audiobook = audiobook
         self.bookmarks = AudiobookStore.bookmarks(for: audiobook.id)
         super.init()
-        speed = UserDefaults.standard.object(forKey: speedKey).map { Float($0 as? Double ?? 1) } ?? 1
+        if let savedSpeed = UserDefaults.standard.object(forKey: speedKey) as? NSNumber {
+            speed = savedSpeed.floatValue
+        } else {
+            speed = 1
+        }
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .spokenAudio)
         try? session.setActive(true)
@@ -289,20 +294,35 @@ private struct BookmarkEditor: View {
         registerAudioNotifications()
         loadChapter()
     }
-    deinit { NotificationCenter.default.removeObserver(self) }
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        sleepTimer?.invalidate()
+    }
     func toggle() {
         guard let audioPlayer else { return }
         if isPlaying {
             audioPlayer.pause()
             savePosition()
+            isPlaying = false
         } else {
             try? AVAudioSession.sharedInstance().setActive(true)
-            audioPlayer.play()
+            guard audioPlayer.play() else {
+                updateNowPlayingInfo()
+                return
+            }
+            isPlaying = true
         }
-        isPlaying.toggle()
         updateNowPlayingInfo()
     }
-    func stop() { savePosition(); audioPlayer?.stop(); isPlaying = false; updateNowPlayingInfo() }
+    func stop() {
+        savePosition()
+        sleepTimer?.invalidate()
+        sleepTimer = nil
+        sleepTimerRemaining = nil
+        audioPlayer?.stop()
+        isPlaying = false
+        updateNowPlayingInfo()
+    }
     func previousChapter() { guard chapterIndex > 0 else { return }; chapterIndex -= 1 }
     func nextChapter() { guard chapterIndex + 1 < audiobook.chapters.count else { return }; chapterIndex += 1 }
     func skip(by seconds: TimeInterval) {
@@ -371,16 +391,27 @@ private struct BookmarkEditor: View {
     }
 
     private func configureRemoteCommands() {
-        remoteCommandCenter.playCommand.removeTarget(self)
-        remoteCommandCenter.pauseCommand.removeTarget(self)
-        remoteCommandCenter.skipBackwardCommand.removeTarget(self)
-        remoteCommandCenter.skipForwardCommand.removeTarget(self)
+        removeAllRemoteCommandTargets()
         remoteCommandCenter.playCommand.addTarget(self, action: #selector(remotePlay))
         remoteCommandCenter.pauseCommand.addTarget(self, action: #selector(remotePause))
         remoteCommandCenter.skipBackwardCommand.preferredIntervals = [15]
         remoteCommandCenter.skipForwardCommand.preferredIntervals = [30]
         remoteCommandCenter.skipBackwardCommand.addTarget(self, action: #selector(remoteSkipBackward))
         remoteCommandCenter.skipForwardCommand.addTarget(self, action: #selector(remoteSkipForward))
+    }
+
+    private func removeRemoteCommandTargets() {
+        remoteCommandCenter.playCommand.removeTarget(self)
+        remoteCommandCenter.pauseCommand.removeTarget(self)
+        remoteCommandCenter.skipBackwardCommand.removeTarget(self)
+        remoteCommandCenter.skipForwardCommand.removeTarget(self)
+    }
+
+    private func removeAllRemoteCommandTargets() {
+        remoteCommandCenter.playCommand.removeTarget(nil)
+        remoteCommandCenter.pauseCommand.removeTarget(nil)
+        remoteCommandCenter.skipBackwardCommand.removeTarget(nil)
+        remoteCommandCenter.skipForwardCommand.removeTarget(nil)
     }
 
     @objc private func remotePlay(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
