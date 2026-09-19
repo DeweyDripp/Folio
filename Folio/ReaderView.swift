@@ -242,6 +242,10 @@ private struct PagedReaderView: View {
         .onChange(of: currentPage) { _, page in
             saveProgress(page)
         }
+        .hingeTurnsPage(
+            isEnabled: !showsMenu && currentPage + activePageStep < book.pages.count,
+            turnForward: advanceForHinge
+        )
     }
 
     private var chapters: [ReaderChapter] {
@@ -339,6 +343,10 @@ private struct PagedReaderView: View {
         let alignedPage = page - (page % activePageStep)
 
         currentPage = alignedPage
+    }
+
+    private func advanceForHinge() {
+        go(to: min(book.pages.count - 1, currentPage + activePageStep))
     }
 
     private func restoreProgressIfNeeded() {

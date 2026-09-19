@@ -28,45 +28,10 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            iPadLayout
-        } else {
-            phoneLayout
-        }
+        libraryLayout
     }
 
-    private var iPadLayout: some View {
-        NavigationSplitView {
-            List {
-                Section("Folio") {
-                    NavigationLink {
-                        phoneLayout
-                    } label: {
-                        Label("Library", systemImage: "books.vertical")
-                    }
-                }
-                Section {
-                    NavigationLink {
-                        AppSettingsView(books: importedBooks)
-                    } label: {
-                        Label("Settings", systemImage: "gearshape")
-                    }
-                    NavigationLink {
-                        LibraryInsightsView(books: importedBooks)
-                    } label: {
-                        Label("Insights", systemImage: "chart.bar.xaxis")
-                    }
-                }
-            }
-            .listStyle(.sidebar)
-            .navigationTitle("Folio")
-        } detail: {
-            phoneLayout
-        }
-        .navigationSplitViewStyle(.balanced)
-    }
-
-    private var phoneLayout: some View {
+    private var libraryLayout: some View {
         NavigationStack {
             Group {
                 if isLoadingLibrary {

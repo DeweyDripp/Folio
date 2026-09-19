@@ -14,6 +14,7 @@ Folio is a SwiftUI ebook reader project built for a calm, personal reading exper
 - Import EPUB, PDF, and plain-text books
 - EPUB table of contents and chapter navigation
 - Centralized adaptive one-page and two-page reader layouts
+- iPhone Duo hinge-assisted page turns: close slightly, then reopen to advance one page or spread
 - Stable paginated EPUB reading with zero column drift
 - Kindle-inspired interactive paper-curl page turns
 - Optional bottom progress indicator for the whole book or current chapter
@@ -55,7 +56,7 @@ Folio currently targets iOS 27 because it is being developed alongside Apple’s
 
 To install on a physical iPhone, choose your development team under the Folio target’s **Signing & Capabilities** settings, connect your iPhone, select it as the run destination, and press **Run**.
 
-The standard iPhone simulators remain the main supported development target. iPhone Duo simulator testing requires Apple’s newer Xcode beta runtime; Duo-specific layout work is currently kept separate from the stable reader path.
+The standard iPhone simulators remain the main supported development target. iPhone Duo hinge testing requires Apple’s Xcode 27.1 (or later) runtime; the hinge interaction is ignored on devices without a supported hinge.
 
 ## Using Folio
 
@@ -68,6 +69,8 @@ Inside a book:
 - Use **Navigation** for the table of contents and bookmarks.
 - Hold the upper-right corner to add or remove a page bookmark.
 - Select text in an EPUB to create a highlight and optional note.
+
+On a supported iPhone Duo, slightly close the device and reopen it to advance one page or spread. Folio ignores the intermediate hinge callbacks so one physical gesture turns only once.
 
 Long-press a book in the library to edit its metadata or remove it.
 

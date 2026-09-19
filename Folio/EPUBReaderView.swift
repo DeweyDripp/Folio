@@ -119,6 +119,12 @@ struct EPUBReaderView: View {
         .onReceive(highlights.$highlights) { savedHighlights in
             model.applyHighlights(savedHighlights)
         }
+        .hingeTurnsPage(
+            isEnabled: !showsMenu && model.navigator != nil && model.currentProgress < 0.999,
+            turnForward: {
+                Task { await model.advanceForward() }
+            }
+        )
         .task {
             model.onHighlightActivated = { highlightID in
                 editingHighlight = highlights.highlights.first { $0.id.uuidString == highlightID }
@@ -265,6 +271,11 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
             return
         }
         _ = await navigator.go(to: locator, options: pageTurnOptions)
+    }
+
+    func advanceForward() async {
+        guard let navigator else { return }
+        _ = await navigator.goForward(options: pageTurnOptions)
     }
 
     func applyHighlights(_ highlights: [ReaderHighlight]) {
