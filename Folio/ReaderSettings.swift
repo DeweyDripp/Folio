@@ -69,13 +69,6 @@ enum ReaderPageLayout: String, CaseIterable, Identifiable {
         }
     }
 
-    func showsTwoPages(for width: CGFloat) -> Bool {
-        switch self {
-        case .automatic: width >= 700
-        case .single: false
-        case .double: true
-        }
-    }
 }
 
 enum ReaderProgressDisplay: String, CaseIterable, Identifiable {

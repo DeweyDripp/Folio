@@ -10,8 +10,13 @@ struct EPUBReaderView: View {
     @ObservedObject var settings: ReaderSettings
     @Binding var showsMenu: Bool
     @State private var editingHighlight: ReaderHighlight?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    init(book: Book, settings: ReaderSettings, showsMenu: Binding<Bool>) {
+    init(
+        book: Book,
+        settings: ReaderSettings,
+        showsMenu: Binding<Bool>
+    ) {
         self.settings = settings
         _showsMenu = showsMenu
         _model = StateObject(wrappedValue: EPUBReaderModel(book: book, settings: settings))
@@ -23,10 +28,15 @@ struct EPUBReaderView: View {
         Group {
             if let navigator = model.navigator {
                 GeometryReader { geometry in
+                    let layout = ReaderLayout.resolve(
+                        pageLayout: settings.pageLayout,
+                        horizontalSizeClass: horizontalSizeClass,
+                        geometry: geometry,
+                    )
                     EPUBNavigatorContainer(
                         navigator: navigator,
                         settings: settings,
-                        availableWidth: geometry.size.width,
+                        layout: layout,
                         onHighlightSelection: addHighlight
                     )
                 }
@@ -193,6 +203,7 @@ final class EPUBReaderModel: NSObject, ObservableObject, EPUBNavigatorDelegate {
                 lineHeight: settings.lineHeight,
                 pageMargins: settings.pageMargins,
                 publisherStyles: settings.usesPublisherStyles,
+                scroll: false,
                 spread: .auto,
                 theme: settings.theme.readiumTheme
             )

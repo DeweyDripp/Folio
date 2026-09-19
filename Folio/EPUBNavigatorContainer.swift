@@ -7,7 +7,7 @@ import UIKit
 struct EPUBNavigatorContainer: UIViewControllerRepresentable {
     let navigator: EPUBNavigatorViewController
     @ObservedObject var settings: ReaderSettings
-    let availableWidth: CGFloat
+    let layout: ReaderLayout
     let onHighlightSelection: (Locator) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -26,7 +26,7 @@ struct EPUBNavigatorContainer: UIViewControllerRepresentable {
         viewController.onHighlightSelection = onHighlightSelection
         viewController.usesPageTurnAnimation = settings.usesPageTurnAnimation
         viewController.paperColor = UIColor(settings.theme.backgroundColor)
-        let showsTwoPages = settings.pageLayout.showsTwoPages(for: availableWidth)
+        let showsTwoPages = layout.showsTwoPages
         let signature = [
             String(showsTwoPages),
             settings.theme.rawValue,
@@ -43,11 +43,15 @@ struct EPUBNavigatorContainer: UIViewControllerRepresentable {
         navigator.submitPreferences(
             EPUBPreferences(
                 columnCount: showsTwoPages ? .two : .one,
+                // Readium advances by exactly one viewport width per turn.
+                // A custom CSS column gap would accumulate as horizontal drift.
+                columnGap: 0,
                 fontFamily: settings.readiumFont,
                 fontSize: settings.fontScale,
                 lineHeight: settings.lineHeight,
                 pageMargins: settings.pageMargins,
                 publisherStyles: settings.usesPublisherStyles,
+                scroll: false,
                 spread: showsTwoPages ? .always : .never,
                 theme: settings.theme.readiumTheme
             )
@@ -114,14 +118,14 @@ final class EPUBHostViewController: PaperTurnController {
         navigator.didMove(toParent: self)
 
         canTurnPage = { [weak navigator] in navigator?.currentSelection == nil }
-        prepareTurn = { [weak navigator] left in
-            guard let navigator, let original = navigator.currentLocation else { return nil }
+        prepareTurn = { [weak self] left in
+            guard let self, let original = navigator.currentLocation else { return nil }
             let forward = left == (navigator.publication.metadata.readingProgression != .rtl)
-            let moved = forward
-                ? await navigator.goForward(options: NavigatorGoOptions(animated: false))
-                : await navigator.goBackward(options: NavigatorGoOptions(animated: false))
-            guard moved else { return nil }
-            return { _ = await navigator.go(to: original, options: NavigatorGoOptions(animated: false)) }
+            guard await self.moveByPageOrChapter(forward: forward) else { return nil }
+            return { [weak self] in
+                guard let self else { return }
+                _ = await self.navigator.go(to: original, options: NavigatorGoOptions(animated: false))
+            }
         }
         navigator.addObserver(.tap { [weak self] event in
             guard let self, self.navigator.currentSelection == nil else { return false }
@@ -136,6 +140,43 @@ final class EPUBHostViewController: PaperTurnController {
             }
             return false
         })
+    }
+
+    private func moveByPageOrChapter(forward: Bool) async -> Bool {
+        let options = NavigatorGoOptions(animated: false)
+        let movedWithinChapter = forward
+            ? await navigator.goForward(options: options)
+            : await navigator.goBackward(options: options)
+
+        if movedWithinChapter {
+            return true
+        }
+
+        return await moveToAdjacentChapter(forward: forward, options: options)
+    }
+
+    private func moveToAdjacentChapter(forward: Bool, options: NavigatorGoOptions) async -> Bool {
+        guard
+            let currentLocation = navigator.currentLocation,
+            let currentIndex = navigator.publication.readingOrder.firstIndexWithHREF(currentLocation.href)
+        else {
+            return false
+        }
+
+        let adjacentIndex = forward ? currentIndex + 1 : currentIndex - 1
+        guard navigator.publication.readingOrder.indices.contains(adjacentIndex) else {
+            return false
+        }
+
+        let adjacentLink = navigator.publication.readingOrder[adjacentIndex]
+        let progression = forward ? 0.0 : 1.0
+        let locator = Locator(
+            href: adjacentLink.url(),
+            mediaType: adjacentLink.mediaType ?? currentLocation.mediaType,
+            title: adjacentLink.title,
+            locations: Locator.Locations(progression: progression)
+        )
+        return await navigator.go(to: locator, options: options)
     }
 
     @objc func highlightSelection() {

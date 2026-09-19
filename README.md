@@ -13,7 +13,8 @@ Folio is a SwiftUI ebook reader project built for a calm, personal reading exper
 - EPUB reading powered by [Readium Swift Toolkit](https://github.com/readium/swift-toolkit)
 - Import EPUB, PDF, and plain-text books
 - EPUB table of contents and chapter navigation
-- Adaptive one-page and two-page layouts
+- Centralized adaptive one-page and two-page reader layouts
+- Stable paginated EPUB reading with zero column drift
 - Kindle-inspired interactive paper-curl page turns
 - Optional bottom progress indicator for the whole book or current chapter
 - Resume reading from the last saved location
@@ -54,6 +55,8 @@ Folio currently targets iOS 27 because it is being developed alongside Apple’s
 
 To install on a physical iPhone, choose your development team under the Folio target’s **Signing & Capabilities** settings, connect your iPhone, select it as the run destination, and press **Run**.
 
+The standard iPhone simulators remain the main supported development target. iPhone Duo simulator testing requires Apple’s newer Xcode beta runtime; Duo-specific layout work is currently kept separate from the stable reader path.
+
 ## Using Folio
 
 From the Library screen, tap **+** to import an EPUB, PDF, or text file. Tap a book to read it.
@@ -75,6 +78,7 @@ Folio/
 ├── FolioApp.swift                 App entry point
 ├── LibraryView.swift              Library, search, sorting, and shelves
 ├── ReaderView.swift               Text/PDF reader and adaptive layout
+├── ReaderLayout.swift             Shared single/two-page layout decisions
 ├── EPUBReaderView.swift           EPUB reader model and Readium integration
 ├── EPUBNavigatorContainer.swift   UIKit bridge for the Readium navigator
 ├── PaperTurnController.swift      Interactive page-turn gesture lifecycle
@@ -101,7 +105,7 @@ In Xcode, choose **Product → Test** (⌘U) to run the test suite.
 
 ## Development status
 
-Folio is an actively developed personal project and is not yet an App Store release. The current focus is reader polish, broad EPUB compatibility, accessibility, performance, and reliable behavior across device sizes. iPhone Duo-specific layout work will be added as Apple’s SDK support matures.
+Folio is an actively developed personal project and is not yet an App Store release. The current focus is reader polish, broad EPUB compatibility, accessibility, performance, and reliable behavior across device sizes. EPUB reading is explicitly kept in paginated mode with zero column spacing to avoid accumulated horizontal drift while turning pages. iPhone Duo-specific layout work will be revisited as Apple’s SDK and simulator support matures.
 
 ## Acknowledgments
 

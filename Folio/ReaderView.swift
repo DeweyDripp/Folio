@@ -141,8 +141,13 @@ private struct PagedReaderView: View {
     @State private var activePageStep = 1
     @State private var restoredProgress = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    init(book: Book, settings: ReaderSettings, showsMenu: Binding<Bool>) {
+    init(
+        book: Book,
+        settings: ReaderSettings,
+        showsMenu: Binding<Bool>
+    ) {
         self.book = book
         self.settings = settings
         _showsMenu = showsMenu
@@ -152,11 +157,20 @@ private struct PagedReaderView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let showsTwoPages = settings.pageLayout.showsTwoPages(for: geometry.size.width)
+            let layout = ReaderLayout.resolve(
+                pageLayout: settings.pageLayout,
+                horizontalSizeClass: horizontalSizeClass,
+                geometry: geometry,
+            )
+            let showsTwoPages = layout.showsTwoPages
             let pageStep = showsTwoPages ? 2 : 1
 
             VStack(spacing: 0) {
-                pageContainer(showsTwoPages: showsTwoPages, pageStep: pageStep)
+                pageContainer(
+                    showsTwoPages: showsTwoPages,
+                    pageStep: pageStep,
+                    gutterWidth: layout.gutterWidth
+                )
 
                 Divider()
 
@@ -238,7 +252,7 @@ private struct PagedReaderView: View {
 
     private var pageProgress: Double {
         guard !book.pages.isEmpty else { return 0 }
-        return min(1, Double(currentPage + 1) / Double(book.pages.count))
+        return min(1, Double(currentPage + activePageStep) / Double(book.pages.count))
     }
 
     private func closeMenu() {
@@ -248,7 +262,7 @@ private struct PagedReaderView: View {
     }
 
     @ViewBuilder
-    private func pageContainer(showsTwoPages: Bool, pageStep: Int) -> some View {
+    private func pageContainer(showsTwoPages: Bool, pageStep: Int, gutterWidth: CGFloat) -> some View {
         PaperPageContainer(
             page: $currentPage,
             pageCount: book.pages.count,
@@ -256,23 +270,27 @@ private struct PagedReaderView: View {
             animated: settings.usesPageTurnAnimation && !reduceMotion,
             paperColor: settings.theme.backgroundColor
         ) { page in
-            readerPages(startingAt: page, showsTwoPages: showsTwoPages)
+            readerPages(startingAt: page, showsTwoPages: showsTwoPages, gutterWidth: gutterWidth)
         }
     }
 
     @ViewBuilder
-    private func readerPages(startingAt page: Int, showsTwoPages: Bool) -> some View {
+    private func readerPages(startingAt page: Int, showsTwoPages: Bool, gutterWidth: CGFloat) -> some View {
         if showsTwoPages {
-            HStack(spacing: 1) {
+            HStack(spacing: 0) {
                 PageView(text: book.pages[page], settings: settings)
+
+                Color.clear
+                    .frame(width: gutterWidth)
+                    .accessibilityHidden(true)
 
                 if page + 1 < book.pages.count {
                     PageView(text: book.pages[page + 1], settings: settings)
                 } else {
-                    Color(.systemBackground)
+                    settings.theme.backgroundColor
                 }
             }
-            .background(Color(.separator))
+            .background(settings.theme.backgroundColor)
         } else {
             PageView(text: book.pages[page], settings: settings)
         }
